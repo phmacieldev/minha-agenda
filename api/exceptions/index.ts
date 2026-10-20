@@ -1,10 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { getPool } from '../../lib/db';
 import { withAuth, BadRequestError, NotFoundError } from '../../lib/handler';
 import { exceptionToJson } from '../../lib/mappers';
 
 const exceptionSchema = z.object({
+  id: z.string().uuid().optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date deve ser YYYY-MM-DD'),
   placeId: z.string().uuid().nullable().optional(),
   type: z.enum(['block', 'extra']),
@@ -14,7 +16,7 @@ const exceptionSchema = z.object({
   note: z.string().optional().default(''),
 });
 
-const exceptionUpdateSchema = exceptionSchema.partial();
+const exceptionUpdateSchema = exceptionSchema.omit({ id: true }).partial();
 
 const columnByKey: Record<string, string> = { placeId: 'place_id', allDay: 'all_day' };
 
@@ -52,10 +54,16 @@ export default withAuth(async (req: VercelRequest, res: VercelResponse, auth) =>
         if (!owned.rowCount) throw new BadRequestError('placeId não pertence a essa usuária');
       }
 
+      const id = x.id ?? randomUUID();
       const result = await pool.query(
-        `insert into exceptions (user_id, date, place_id, type, all_day, s, e, note)
-         values ($1,$2,$3,$4,$5,$6,$7,$8) returning *`,
-        [auth.userId, x.date, x.placeId ?? null, x.type, x.allDay, x.s ?? null, x.e ?? null, x.note]
+        `insert into exceptions (id, user_id, date, place_id, type, all_day, s, e, note)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         on conflict (id) do update set
+           date = excluded.date, place_id = excluded.place_id, type = excluded.type,
+           all_day = excluded.all_day, s = excluded.s, e = excluded.e, note = excluded.note
+         where exceptions.user_id = excluded.user_id
+         returning *`,
+        [id, auth.userId, x.date, x.placeId ?? null, x.type, x.allDay, x.s ?? null, x.e ?? null, x.note]
       );
       return res.status(201).json(exceptionToJson(result.rows[0]));
     }

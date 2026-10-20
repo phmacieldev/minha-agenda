@@ -7,11 +7,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const auth = getAuth(req);
     const pool = getPool();
     const result = await pool.query(
-      'select id, email, name, title from users where id = $1',
+      'select id, email, name, title, email_verified_at from users where id = $1',
       [auth.userId]
     );
     if (!result.rowCount) return res.status(404).json({ error: 'not_found' });
-    res.status(200).json(result.rows[0]);
+    const row = result.rows[0];
+    res.status(200).json({
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      title: row.title,
+      emailVerified: Boolean(row.email_verified_at),
+    });
   } catch (err) {
     if (err instanceof UnauthorizedError) return res.status(401).json({ error: 'unauthorized' });
     throw err;

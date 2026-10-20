@@ -5,6 +5,4 @@ Thumbs.db
 *.log
 test-results/
 playwright-report/
-.env
-.env.local
-.env*.local
+.env*

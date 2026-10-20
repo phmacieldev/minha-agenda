@@ -111,6 +111,7 @@ h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.
 .avatar{width:38px;height:38px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-weight:700;flex:none;font-size:15px}
 .section{margin-top:22px;display:flex;flex-direction:column;gap:10px}
 .search{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface)}
+.datebox{min-height:40px;max-width:160px;padding:6px 8px;font-size:14px;cursor:pointer}
 
 /* Summary */
 .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
@@ -118,6 +119,12 @@ h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.
 .stat .v{font-family:var(--display);font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
 .bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:8px}
 .bar i{display:block;height:100%;border-radius:99px;background:var(--pc)}
+
+/* Demo bar */
+.demobar{position:fixed;top:0;left:0;right:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--accent);color:var(--accent-ink);box-shadow:var(--shadow);padding:10px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));padding-top:calc(env(safe-area-inset-top,0px) + 10px)}
+.demobar span{font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.demobar button{border:0;border-radius:999px;padding:8px 14px;font-weight:700;font-size:13px;flex:none;background:var(--accent-ink);color:var(--accent)}
+body.has-demobar .wrap{padding-top:calc(env(safe-area-inset-top,0px) + 58px)}
 
 /* Tab bar */
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
@@ -260,6 +267,7 @@ pre.share{white-space:pre-wrap;background:var(--surface);border:1px solid var(--
 </style>
 </head>
 <body>
+<div class="demobar" id="demoBar" hidden><span>Você está vendo um exemplo</span><button id="demoCreate">Criar minha conta</button></div>
 <div class="wrap" id="app"></div>
 
 <nav class="tabs" id="tabs" hidden>
@@ -294,7 +302,7 @@ const DEFAULT_MSG='Olá, {paciente}! Passando para confirmar seu atendimento {di
 const $=s=>document.querySelector(s);
 const app=$('#app');
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
+const uid=()=>(crypto.randomUUID?crypto.randomUUID():'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16)}));
 const pad=n=>String(n).padStart(2,'0');
 const iso=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
 const parse=s=>{const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d)};
@@ -349,11 +357,87 @@ function migrate(){
   S.appts.forEach(a=>{if(!a.pay)a.pay='particular'});
 }
 migrate();
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('Não consegui salvar neste aparelho')}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('Não consegui salvar neste aparelho')}scheduleSync()}
 function blankHours(){const h={};for(let i=0;i<7;i++)h[i]=[];return h}
 function newPlace(name,color,kind){return{id:uid(),name,color,kind:kind||'clinica',address:'',price:0,duration:50,hours:blankHours()}}
 
-const ui={tab:'agenda',sel:todayISO(),week:iso(startOfWeek(new Date())),q:'',rep:{mode:'mes',anchor:todayISO()},showList:false};
+/* ---------- sincronização com a nuvem ---------- */
+const AUTH_KEY='minha-agenda-auth';
+const SYNC_IDS_KEY='minha-agenda-sync-ids';
+const API_BASE='/api';
+let AUTH=null;
+try{const r=localStorage.getItem(AUTH_KEY);if(r)AUTH=JSON.parse(r)}catch(e){}
+function setAuth(a){AUTH=a;try{localStorage.setItem(AUTH_KEY,JSON.stringify(a))}catch(e){}}
+function clearAuth(){AUTH=null;try{localStorage.removeItem(AUTH_KEY);localStorage.removeItem(SYNC_IDS_KEY)}catch(e){}}
+function getSyncIds(){try{const r=localStorage.getItem(SYNC_IDS_KEY);return r?JSON.parse(r):{}}catch(e){return{}}}
+function setSyncIds(ids){try{localStorage.setItem(SYNC_IDS_KEY,JSON.stringify(ids))}catch(e){}}
+
+async function apiFetch(path,opts){
+  opts=opts||{};
+  const headers=Object.assign({'Content-Type':'application/json'},opts.headers||{});
+  if(AUTH&&AUTH.token)headers.Authorization='Bearer '+AUTH.token;
+  const res=await fetch(API_BASE+path,Object.assign({},opts,{headers}));
+  let body=null;
+  try{body=await res.json()}catch(e){}
+  if(!res.ok){const err=new Error((body&&body.error)||('http_'+res.status));err.status=res.status;err.body=body;throw err}
+  return body;
+}
+async function apiSignup(email,password,name,title){
+  const r=await apiFetch('/auth/signup',{method:'POST',body:JSON.stringify({email,password,name,title})});
+  setAuth({token:r.token,email});
+}
+async function apiLogin(email,password){
+  const r=await apiFetch('/auth/login',{method:'POST',body:JSON.stringify({email,password})});
+  setAuth({token:r.token,email});
+}
+
+const RESOURCE_PATHS={places:'/places',insurers:'/insurers',patients:'/patients',appts:'/appts',exceptions:'/exceptions',records:'/records'};
+const patientForApi=p=>{const r=Object.assign({},p);delete r.records;return r};
+
+async function pullAll(){
+  const[me,places,patientsRaw,insurers,appts,exceptions,records]=await Promise.all([
+    apiFetch('/auth/me'),apiFetch('/places'),apiFetch('/patients'),apiFetch('/insurers'),apiFetch('/appts'),apiFetch('/exceptions'),apiFetch('/records')
+  ]);
+  const byPatient={};
+  records.forEach(r=>{const rec=Object.assign({},r);const pid=rec.patientId;delete rec.patientId;(byPatient[pid]=byPatient[pid]||[]).push(rec)});
+  const patients=patientsRaw.map(p=>Object.assign({},p,{records:byPatient[p.id]||[]}));
+  setSyncIds({places:places.map(x=>x.id),insurers:insurers.map(x=>x.id),patients:patients.map(x=>x.id),appts:appts.map(x=>x.id),exceptions:exceptions.map(x=>x.id),records:records.map(x=>x.id)});
+  const settings=(S&&S.settings)||{msg:DEFAULT_MSG};
+  return{v:2,profile:{name:me.name,title:me.title||''},places,patients,appts,insurers,exceptions,settings};
+}
+
+let syncing=false,syncAgain=false;
+async function pushAll(){
+  if(!AUTH)return;
+  if(syncing){syncAgain=true;return}
+  syncing=true;
+  try{
+    const prevIds=getSyncIds();
+    const curIds={places:[],insurers:[],patients:[],appts:[],exceptions:[],records:[]};
+    for(const p of S.places){await apiFetch('/places',{method:'POST',body:JSON.stringify(p)});curIds.places.push(p.id)}
+    for(const i of S.insurers){await apiFetch('/insurers',{method:'POST',body:JSON.stringify(i)});curIds.insurers.push(i.id)}
+    for(const p of S.patients){
+      await apiFetch('/patients',{method:'POST',body:JSON.stringify(patientForApi(p))});curIds.patients.push(p.id);
+      for(const r of (p.records||[])){await apiFetch('/records',{method:'POST',body:JSON.stringify(Object.assign({},r,{patientId:p.id}))});curIds.records.push(r.id)}
+    }
+    for(const a of S.appts){await apiFetch('/appts',{method:'POST',body:JSON.stringify(a)});curIds.appts.push(a.id)}
+    for(const x of S.exceptions){await apiFetch('/exceptions',{method:'POST',body:JSON.stringify(x)});curIds.exceptions.push(x.id)}
+    for(const key of Object.keys(RESOURCE_PATHS)){
+      const removed=(prevIds[key]||[]).filter(id=>curIds[key].indexOf(id)===-1);
+      for(const id of removed){try{await apiFetch(RESOURCE_PATHS[key]+'?id='+id,{method:'DELETE'})}catch(e){}}
+    }
+    setSyncIds(curIds);
+  }catch(e){console.warn('Sincronização falhou',e)}
+  finally{syncing=false;if(syncAgain){syncAgain=false;pushAll()}}
+}
+let syncTimer=null;
+function scheduleSync(){
+  if(!AUTH)return;
+  clearTimeout(syncTimer);
+  syncTimer=setTimeout(pushAll,900);
+}
+
+const ui={tab:'agenda',sel:todayISO(),week:iso(startOfWeek(new Date())),q:'',rep:{mode:'mes',anchor:todayISO(),q:'',shown:{},placeTab:null},showList:false};
 
 const place=id=>S.places.find(p=>p.id===id);
 const patient=id=>S.patients.find(p=>p.id===id);
@@ -453,38 +537,67 @@ const placeMsgSuggestion=pl=>pl.kind==='particular'?'Olá, {paciente}! Confirman
 function onboarding(){
   $('#tabs').hidden=true;$('#fab').hidden=true;
   let places=[{name:'Clínica 1',color:'p1'},{name:'Clínica 2',color:'p4'},{name:'Particular',color:'p5'}];
-  let openCol=-1,obName='',obTitle='';
+  let openCol=-1,obName='',obTitle='',obEmail='',obPassword='',mode='signup';
   const draw=()=>{
     app.innerHTML=`<div class="ob">
       <div class="hero"><div class="mark"><svg class="logo" viewBox="0 0 1024 1024" aria-hidden="true"><defs><linearGradient id="lgBg" x1="0" y1="0" x2="0.55" y2="1"><stop offset="0" stop-color="#FF8FB6"/><stop offset="1" stop-color="#D6337A"/></linearGradient></defs><rect width="1024" height="1024" rx="228" fill="url(#lgBg)"/><rect x="196" y="236" width="632" height="464" rx="150" fill="#fff"/><path d="M330 640 L300 812 L470 690 Z" fill="#fff"/><g fill="#D6337A"><rect x="256" y="423" width="44" height="90" rx="22"/><rect x="334" y="383" width="44" height="170" rx="22"/><rect x="412" y="338" width="44" height="260" rx="22"/><rect x="490" y="383" width="44" height="170" rx="22"/><rect x="568" y="318" width="44" height="300" rx="22"/><rect x="646" y="368" width="44" height="200" rx="22"/><rect x="724" y="413" width="44" height="110" rx="22"/></g><circle cx="760" cy="760" r="132" fill="#fff"/><circle cx="760" cy="760" r="110" fill="#FFECF4"/><path d="M702 762 L746 806 L822 720" fill="none" stroke="#D6337A" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <h1>Sua agenda de atendimentos, num lugar só</h1>
       <p class="muted" style="margin:0">Clínicas, convênios e particular juntos, horários livres à vista, confirmação pelo WhatsApp e relatório para conferir os repasses.</p></div>
-      <label class="field"><span>Seu nome</span><input class="input" id="obName" placeholder="Ex.: Ana Souza" autocomplete="name"></label>
-      <label class="field"><span>Profissão (opcional)</span><input class="input" id="obTitle" placeholder="Ex.: Fisioterapeuta"></label>
-      <div class="field"><span>Onde você atende</span>
-        <div style="display:flex;flex-direction:column;gap:8px">${places.map((p,i)=>`<div class="obplace"><button type="button" class="obcol ${openCol===i?'on':''}" data-col="${i}" style="background:${cv(p.color)}" aria-label="Mudar a cor de ${esc(p.name||'local')}"></button><input class="input" data-pi="${i}" value="${esc(p.name)}" placeholder="Nome do local"><button class="iconbtn" data-rm="${i}" aria-label="Remover">✕</button></div>${openCol===i?`<div class="cpick obpick" id="obPick"></div>`:''}`).join('')}</div>
-        <button class="link" id="obAdd">+ Adicionar outro local</button>
-        <span class="small muted" style="font-weight:400">Toque na bolinha colorida para escolher a cor de cada local. Depois você ajusta horários na aba Horários e cadastra os convênios em Ajustes.</span>
-      </div>
-      <button class="btn primary block" id="obGo">Começar</button>
+      <div class="seg solid" id="obMode"><button data-v="signup">Criar conta</button><button data-v="login">Entrar</button></div>
+      ${mode==='signup'?`
+        <label class="field"><span>Seu nome</span><input class="input" id="obName" placeholder="Ex.: Ana Souza" autocomplete="name"></label>
+        <label class="field"><span>Profissão (opcional)</span><input class="input" id="obTitle" placeholder="Ex.: Fisioterapeuta"></label>
+        <div class="field"><span>Onde você atende</span>
+          <div style="display:flex;flex-direction:column;gap:8px">${places.map((p,i)=>`<div class="obplace"><button type="button" class="obcol ${openCol===i?'on':''}" data-col="${i}" style="background:${cv(p.color)}" aria-label="Mudar a cor de ${esc(p.name||'local')}"></button><input class="input" data-pi="${i}" value="${esc(p.name)}" placeholder="Nome do local"><button class="iconbtn" data-rm="${i}" aria-label="Remover">✕</button></div>${openCol===i?`<div class="cpick obpick" id="obPick"></div>`:''}`).join('')}</div>
+          <button class="link" id="obAdd">+ Adicionar outro local</button>
+          <span class="small muted" style="font-weight:400">Toque na bolinha colorida para escolher a cor de cada local. Depois você ajusta horários na aba Horários e cadastra os convênios em Ajustes.</span>
+        </div>
+        <label class="field"><span>E-mail</span><input class="input" id="obEmail" type="email" placeholder="voce@email.com" autocomplete="email"></label>
+        <label class="field"><span>Senha</span><input class="input" id="obPassword" type="password" placeholder="Pelo menos 6 caracteres" autocomplete="new-password"></label>
+        <button class="btn primary block" id="obGo">Criar conta</button>
+      `:`
+        <label class="field"><span>E-mail</span><input class="input" id="liEmail" type="email" placeholder="voce@email.com" autocomplete="email"></label>
+        <label class="field"><span>Senha</span><input class="input" id="liPassword" type="password" autocomplete="current-password"></label>
+        <button class="btn primary block" id="liGo">Entrar</button>
+      `}
       <button class="btn ghost block" id="obDemo">Ver com exemplos primeiro</button>
     </div>`;
-    $('#obName').value=obName;$('#obTitle').value=obTitle;
-    $('#obName').oninput=e=>obName=e.target.value;$('#obTitle').oninput=e=>obTitle=e.target.value;
-    app.querySelectorAll('[data-pi]').forEach(inp=>inp.oninput=()=>places[+inp.dataset.pi].name=inp.value);
-    app.querySelectorAll('[data-col]').forEach(b=>b.onclick=()=>{const i=+b.dataset.col;openCol=openCol===i?-1:i;draw()});
-    if(openCol>=0&&places[openCol]){const sw=app.querySelector(`[data-col="${openCol}"]`);
-      colorPicker($('#obPick'),places[openCol].color,c=>{places[openCol].color=c;sw.style.background=cv(c)},()=>{openCol=-1;draw()});}
-    app.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{places.splice(+b.dataset.rm,1);openCol=-1;draw()});
-    $('#obAdd').onclick=()=>{places.push({name:'',color:COLORS[places.length%6]});openCol=-1;draw();app.querySelector(`[data-pi="${places.length-1}"]`).focus()};
-    $('#obGo').onclick=()=>{
-      const name=$('#obName').value.trim();
-      if(!name){toast('Escreva seu nome');$('#obName').focus();return}
-      const pl=places.filter(p=>p.name.trim()).map(p=>{const x=newPlace(p.name.trim(),p.color,/particular/i.test(p.name)?'particular':'clinica');for(let d=1;d<=5;d++)x.hours[d]=[{s:'08:00',e:'12:00'},{s:'14:00',e:'18:00'}];return x});
-      if(!pl.length){toast('Adicione pelo menos um local');return}
-      S={v:2,profile:{name,title:$('#obTitle').value.trim()},places:pl,patients:[],appts:[],insurers:[],exceptions:[],settings:{msg:DEFAULT_MSG}};
-      save();go('horarios');toast('Agora ajuste seus dias e horários');
-    };
+    segSelect($('#obMode'),mode);
+    $('#obMode').querySelectorAll('button').forEach(b=>b.onclick=()=>{mode=b.dataset.v;draw()});
+    if(mode==='signup'){
+      $('#obName').value=obName;$('#obTitle').value=obTitle;$('#obEmail').value=obEmail;$('#obPassword').value=obPassword;
+      $('#obName').oninput=e=>obName=e.target.value;$('#obTitle').oninput=e=>obTitle=e.target.value;
+      $('#obEmail').oninput=e=>obEmail=e.target.value;$('#obPassword').oninput=e=>obPassword=e.target.value;
+      app.querySelectorAll('[data-pi]').forEach(inp=>inp.oninput=()=>places[+inp.dataset.pi].name=inp.value);
+      app.querySelectorAll('[data-col]').forEach(b=>b.onclick=()=>{const i=+b.dataset.col;openCol=openCol===i?-1:i;draw()});
+      if(openCol>=0&&places[openCol]){const sw=app.querySelector(`[data-col="${openCol}"]`);
+        colorPicker($('#obPick'),places[openCol].color,c=>{places[openCol].color=c;sw.style.background=cv(c)},()=>{openCol=-1;draw()});}
+      app.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{places.splice(+b.dataset.rm,1);openCol=-1;draw()});
+      $('#obAdd').onclick=()=>{places.push({name:'',color:COLORS[places.length%6]});openCol=-1;draw();app.querySelector(`[data-pi="${places.length-1}"]`).focus()};
+      $('#obGo').onclick=async()=>{
+        const name=$('#obName').value.trim();
+        if(!name){toast('Escreva seu nome');$('#obName').focus();return}
+        const pl=places.filter(p=>p.name.trim()).map(p=>{const x=newPlace(p.name.trim(),p.color,/particular/i.test(p.name)?'particular':'clinica');for(let d=1;d<=5;d++)x.hours[d]=[{s:'08:00',e:'12:00'},{s:'14:00',e:'18:00'}];return x});
+        if(!pl.length){toast('Adicione pelo menos um local');return}
+        const email=$('#obEmail').value.trim(),password=$('#obPassword').value;
+        if(!email||!password){toast('Preencha e-mail e senha');return}
+        const btn=$('#obGo');btn.disabled=true;
+        try{await apiSignup(email,password,name,$('#obTitle').value.trim())}
+        catch(e){btn.disabled=false;toast(e.body&&e.body.error==='email_in_use'?'Esse e-mail já tem conta':(e.body&&e.body.error==='invalid_input'?'Confira o e-mail e a senha (mínimo 6 caracteres)':'Não consegui criar a conta. Tente de novo.'));return}
+        S={v:2,profile:{name,title:$('#obTitle').value.trim()},places:pl,patients:[],appts:[],insurers:[],exceptions:[],settings:{msg:DEFAULT_MSG}};
+        save();go('horarios');toast('Conta criada! Agora ajuste seus dias e horários');
+      };
+    }else{
+      $('#liEmail').oninput=e=>obEmail=e.target.value;$('#liPassword').oninput=e=>obPassword=e.target.value;
+      $('#liEmail').value=obEmail;$('#liPassword').value=obPassword;
+      $('#liGo').onclick=async()=>{
+        const email=$('#liEmail').value.trim(),password=$('#liPassword').value;
+        if(!email||!password){toast('Preencha e-mail e senha');return}
+        const btn=$('#liGo');btn.disabled=true;
+        try{await apiLogin(email,password);S=await pullAll();save();render();toast('Bem-vinda de volta!')}
+        catch(e){btn.disabled=false;toast('E-mail ou senha incorretos')}
+      };
+    }
     $('#obDemo').onclick=()=>{S=demo();save();go('agenda');toast('Exemplos carregados. Apague em Ajustes quando quiser.')};
   };
   draw();
@@ -522,7 +635,9 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>go(b.dataset.tab));
 $('#fab').onclick=()=>{if(ui.tab==='horarios')editException(null);else editAppt(null,{date:ui.sel})};
 
 function render(){
-  if(!S){onboarding();return}
+  if(!S){$('#demoBar').hidden=true;document.body.classList.remove('has-demobar');onboarding();return}
+  const demoBar=$('#demoBar');demoBar.hidden=!S.demo;document.body.classList.toggle('has-demobar',!!S.demo);
+  demoBar.querySelector('#demoCreate').onclick=()=>{S=null;try{localStorage.removeItem(KEY)}catch(e){}render()};
   $('#tabs').hidden=false;
   document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on',b.dataset.tab===ui.tab));
   $('#fab').hidden=!['agenda','pacientes','horarios'].includes(ui.tab);
@@ -973,6 +1088,11 @@ function editException(id,type){
 /* ---------- relatórios ---------- */
 function period(){
   const a=parse(ui.rep.anchor);
+  if(ui.rep.mode==='dia'){
+    const lbl=`${cap(WDL[a.getDay()])}, ${a.getDate()} de ${MES[a.getMonth()]} de ${a.getFullYear()}`;
+    const short=`${pad(a.getDate())}/${pad(a.getMonth()+1)}`;
+    return{start:iso(a),end:iso(a),label:lbl,short,file:'dia-'+iso(a)};
+  }
   if(ui.rep.mode==='semana'){const s=startOfWeek(a),e=addDays(s,6);
     const lbl=s.getMonth()===e.getMonth()?`${s.getDate()} a ${e.getDate()} de ${MES[e.getMonth()]}`:`${s.getDate()}/${pad(s.getMonth()+1)} a ${e.getDate()}/${pad(e.getMonth()+1)}`;
     return{start:iso(s),end:iso(e),label:'Semana de '+lbl,short:lbl,file:'semana-'+iso(s)}}
@@ -996,12 +1116,38 @@ function reportData(){
     total:sum(done),paid:sum(done.filter(a=>a.paid)),pend:sum(done.filter(a=>!a.paid)),forecast:sum(sched),places,byPay};
 }
 function groupDet(g){return g.prices.length===1?`${g.list.length} × ${money(g.prices[0])}`:`${g.list.length} atendimentos`}
+function miniApptRow(a){
+  const p=patient(a.patientId);
+  return `<div class="row" data-miniappt="${a.id}" style="padding:9px 0;cursor:pointer"><span class="grow"><b class="small">${esc(p?.name||'Paciente')}</b><span class="small muted num">${fmtDate(a.date)} · ${money(a.price)}</span></span>${a.paid?'<span class="pill st-concluido">recebido</span>':`<button class="mini" data-markone="${a.id}">Marcar</button>`}</div>`;
+}
+function placeConferCard(x){
+  return `<div class="card" style="display:flex;flex-direction:column;gap:12px">
+    <div class="ptotal"><span style="display:flex;align-items:center;gap:8px;min-width:0"><span class="swatch" style="background:${cv(x.p.color)}"></span><b>${esc(x.p.name)}</b></span><b class="num">${money(x.total)}</b></div>
+    <div class="small muted num">${x.list.length} atendidos · recebido ${money(x.paid)} · a receber ${money(x.pend)}${x.sched.length?` · ${x.sched.length} ainda agendados`:''}</div>
+    <button class="mini" data-crep="${x.p.id}" style="align-self:flex-start">Relatório de pacientes para a clínica</button>
+    ${x.groups.map(g=>{
+      const shownKey=x.p.id+'|'+g.key;
+      const shownCount=ui.rep.shown[shownKey]||10;
+      const visible=g.list.slice(0,shownCount);
+      return `<div class="grp">
+        <div class="gline"><span class="nm"><span class="pay ${g.key==='particular'?'':'conv'}">${esc(g.name)}</span></span><span class="tot">${money(g.total)}</span><span class="det">${groupDet(g)}</span><span class="stt" style="color:${g.pend?'var(--warn)':'var(--ok)'}">${g.pend?'falta '+money(g.pend):'tudo recebido'}</span></div>
+        ${g.pend?`<button class="mini" data-mark="${x.p.id}|${g.key}">Marcar ${money(g.pend)} como recebido</button>`:''}
+        <div style="display:flex;flex-direction:column">${visible.map(miniApptRow).join('')}</div>
+        ${g.list.length>shownCount?`<button class="link" data-more="${shownKey}">Ver mais ${Math.min(10,g.list.length-shownCount)}</button>`:''}
+      </div>`;
+    }).join('')||'<div class="small muted">Nenhum atendimento concluído ainda neste período.</div>'}
+  </div>`;
+}
 function renderReports(){
   const R=reportData();const maxPay=Math.max(1,...R.byPay.map(x=>x.total));
   const sortedList=[...R.inP].sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
-  app.innerHTML=`<div class="top"><div><h1>Relatórios</h1><div class="sub">${R.pr.label}</div></div>
-    <div style="display:flex;gap:6px"><button class="iconbtn" id="rPrev" aria-label="Período anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg></button><button class="iconbtn" id="rNext" aria-label="Próximo período"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg></button></div></div>
-  <div class="seg solid" id="rMode" style="margin-bottom:14px"><button data-v="semana">Semanal</button><button data-v="mes">Mensal</button></div>
+  const q=ui.rep.q.trim().toLowerCase();
+  const filteredList=q?sortedList.filter(a=>(patient(a.patientId)?.name||'').toLowerCase().includes(q)):sortedList;
+  if(!R.places.find(x=>x.p.id===ui.rep.placeTab))ui.rep.placeTab=R.places[0]?.p.id||null;
+  const activePlace=R.places.find(x=>x.p.id===ui.rep.placeTab);
+  app.innerHTML=`<div class="top" style="flex-wrap:wrap;row-gap:10px"><div><h1>Relatórios</h1><div class="sub">${R.pr.label}</div></div>
+    <div style="display:flex;gap:6px;align-items:center;margin-left:auto"><input type="date" class="input num datebox" id="rJump" value="${ui.rep.anchor}"><button class="iconbtn" id="rPrev" aria-label="Período anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg></button><button class="iconbtn" id="rNext" aria-label="Próximo período"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg></button></div></div>
+  <div class="seg solid" id="rMode" style="margin-bottom:14px"><button data-v="dia">Diária</button><button data-v="semana">Semanal</button><button data-v="mes">Mensal</button></div>
   <div class="stats three">
     <div class="stat"><div class="label">Atendidos</div><div class="v">${R.done.length}</div></div>
     <div class="stat"><div class="label">Faltas</div><div class="v">${R.missed.length}</div></div>
@@ -1015,35 +1161,37 @@ function renderReports(){
   </div>
   <div class="btnrow" style="margin-top:10px"><button class="btn soft" id="rCopy">Copiar relatório</button><button class="btn ghost" id="rCsv">Exportar planilha</button></div>
 
-  <div class="section"><div class="label">Conferência por local</div>
-    <div class="small muted">Compare com o que cada clínica pagar. Ao receber, toque em "Marcar recebido" no grupo.</div>
-    ${R.places.length?R.places.map(x=>`<div class="card" style="display:flex;flex-direction:column;gap:12px">
-      <div class="ptotal"><span style="display:flex;align-items:center;gap:8px;min-width:0"><span class="swatch" style="background:${cv(x.p.color)}"></span><b>${esc(x.p.name)}</b></span><b class="num">${money(x.total)}</b></div>
-      <div class="small muted num">${x.list.length} atendidos · recebido ${money(x.paid)} · a receber ${money(x.pend)}${x.sched.length?` · ${x.sched.length} ainda agendados`:''}</div>
-      <button class="mini" data-crep="${x.p.id}" style="align-self:flex-start">Relatório de pacientes para a clínica</button>
-      ${x.groups.map(g=>`<div class="grp"><div class="gline"><span class="nm"><span class="pay ${g.key==='particular'?'':'conv'}">${esc(g.name)}</span></span><span class="tot">${money(g.total)}</span><span class="det">${groupDet(g)}</span><span class="stt" style="color:${g.pend?'var(--warn)':'var(--ok)'}">${g.pend?'falta '+money(g.pend):'tudo recebido'}</span></div>
-        ${g.pend?`<button class="mini" data-mark="${x.p.id}|${g.key}">Marcar ${money(g.pend)} como recebido</button>`:''}</div>`).join('')||'<div class="small muted">Nenhum atendimento concluído ainda neste período.</div>'}
-    </div>`).join(''):'<div class="empty"><b>Sem atendimentos neste período</b>Os números aparecem quando você marca atendimentos como atendidos.</div>'}
-  </div>
-
   ${R.byPay.length?`<div class="section"><div class="label">Por convênio e particular</div><div class="card" style="display:flex;flex-direction:column;gap:14px">
     ${R.byPay.map(g=>`<div style="--pc:var(--accent)"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(g.name)}</b><span class="num small">${g.n} · ${money(g.total)}</span></div><div class="bar"><i style="width:${g.total/maxPay*100}%"></i></div>${g.pend?`<div class="small num" style="color:var(--warn);margin-top:4px">a receber ${money(g.pend)}</div>`:''}</div>`).join('')}
   </div></div>`:''}
 
+  <div class="section"><div class="label">Conferência por local</div>
+    <div class="small muted">Compare com o que cada clínica pagar. Ao receber, toque em "Marcar".</div>
+    ${R.places.length?`<div class="seg solid" id="rPlaceTabs" style="margin-bottom:10px">${R.places.map(x=>`<button data-v="${x.p.id}">${esc(x.p.name)}</button>`).join('')}</div>${activePlace?placeConferCard(activePlace):''}`:'<div class="empty"><b>Sem atendimentos neste período</b>Os números aparecem quando você marca atendimentos como atendidos.</div>'}
+  </div>
+
   <div class="section"><button class="btn ghost block" id="rList">${ui.showList?'Esconder':'Ver'} lista de atendimentos (${sortedList.length})</button>
-  ${ui.showList?`<div class="scrollx"><table class="tbl"><thead><tr><th>Data</th><th>Paciente</th><th>Local</th><th>Pagamento</th><th class="r">Valor</th><th>Situação</th></tr></thead><tbody>
-    ${sortedList.map(a=>`<tr data-a="${a.id}"><td>${fmtDate(a.date)} ${a.time}</td><td>${esc(patient(a.patientId)?.name||'')}</td><td>${esc(place(a.placeId)?.name||'')}</td><td>${esc(payName(a))}</td><td class="r">${money(a.price)}</td><td>${STATUS[a.status]}${a.status==='concluido'?(a.paid?' · recebido':' · a receber'):''}</td></tr>`).join('')}
-  </tbody></table></div>`:''}</div>`;
+  ${ui.showList?`<input class="search" id="rSearch" type="search" placeholder="Buscar atendimento por paciente" value="${esc(ui.rep.q)}" style="margin:10px 0">
+  <div class="scrollx"><table class="tbl"><thead><tr><th>Data</th><th>Paciente</th><th>Local</th><th>Pagamento</th><th class="r">Valor</th><th>Situação</th></tr></thead><tbody>
+    ${filteredList.map(a=>`<tr data-a="${a.id}"><td>${fmtDate(a.date)} ${a.time}</td><td>${esc(patient(a.patientId)?.name||'')}</td><td>${esc(place(a.placeId)?.name||'')}</td><td>${esc(payName(a))}</td><td class="r">${money(a.price)}</td><td>${STATUS[a.status]}${a.status==='concluido'?(a.paid?' · recebido':' · a receber'):''}</td></tr>`).join('')}
+  </tbody></table>${!filteredList.length?'<div class="small muted" style="padding:10px 14px">Nenhum atendimento encontrado.</div>':''}</div>`:''}</div>`;
   segSelect($('#rMode'),ui.rep.mode);
   $('#rMode').querySelectorAll('button').forEach(b=>b.onclick=()=>{ui.rep.mode=b.dataset.v;render()});
-  const shift=k=>{const a=parse(ui.rep.anchor);ui.rep.anchor=iso(ui.rep.mode==='semana'?addDays(a,7*k):new Date(a.getFullYear(),a.getMonth()+k,1));render()};
+  const shift=k=>{const a=parse(ui.rep.anchor);ui.rep.anchor=iso(ui.rep.mode==='semana'?addDays(a,7*k):ui.rep.mode==='dia'?addDays(a,k):new Date(a.getFullYear(),a.getMonth()+k,1));render()};
   $('#rPrev').onclick=()=>shift(-1);$('#rNext').onclick=()=>shift(1);
+  $('#rJump').onchange=e=>{if(e.target.value){ui.rep.anchor=e.target.value;render()}};
+  $('#rJump').onclick=e=>{try{e.target.showPicker&&e.target.showPicker()}catch(err){}};
   $('#rList').onclick=()=>{ui.showList=!ui.showList;render()};
   $('#rCopy').onclick=()=>openSheet('Relatório em texto',`<pre class="share" id="rTxt"></pre><button class="btn primary block" id="rTxtCopy">Copiar texto</button>`,b=>{b.querySelector('#rTxt').textContent=reportText(R);b.querySelector('#rTxtCopy').onclick=()=>copy(reportText(R))});
   $('#rCsv').onclick=()=>saveFile(`atendimentos-${R.pr.file}.csv`,reportCsv(R),'text/csv;charset=utf-8');
+  if($('#rSearch'))$('#rSearch').oninput=()=>{ui.rep.q=$('#rSearch').value;const pos=$('#rSearch').selectionStart;renderReports();const n=$('#rSearch');n.focus();n.setSelectionRange(pos,pos)};
+  if($('#rPlaceTabs')){segSelect($('#rPlaceTabs'),ui.rep.placeTab);$('#rPlaceTabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{ui.rep.placeTab=b.dataset.v;renderReports()})}
   app.querySelectorAll('[data-mark]').forEach(btn=>{const[pid,key]=btn.dataset.mark.split('|');const lbl=btn.textContent;
     twoTap(btn,lbl,'Toque de novo para confirmar',()=>{let n=0;R.done.forEach(a=>{if(a.placeId===pid&&payKey(a)===key&&!a.paid){a.paid=true;n++}});save();render();toast(`${n} atendimento(s) marcados como recebidos`)})});
+  app.querySelectorAll('[data-markone]').forEach(btn=>btn.onclick=e=>{e.stopPropagation();const a=S.appts.find(x=>x.id===btn.dataset.markone);if(a){a.paid=true;save();render();toast('Marcado como recebido')}});
+  app.querySelectorAll('[data-more]').forEach(btn=>btn.onclick=()=>{ui.rep.shown[btn.dataset.more]=(ui.rep.shown[btn.dataset.more]||10)+10;renderReports()});
   app.querySelectorAll('tr[data-a]').forEach(r=>r.onclick=()=>viewAppt(r.dataset.a));
+  app.querySelectorAll('[data-miniappt]').forEach(r=>r.onclick=()=>viewAppt(r.dataset.miniappt));
   app.querySelectorAll('[data-crep]').forEach(btn=>btn.onclick=()=>{const c=clinicReport(btn.dataset.crep,R);
     openSheet('Pacientes · '+place(btn.dataset.crep).name,`<div class="small muted">${R.pr.label}. ${c.count} paciente(s) com sessões ou faltas neste local.</div><pre class="share" id="cTxt"></pre><div class="btnrow"><button class="btn primary" id="cCopy">Copiar texto</button><button class="btn ghost" id="cPrint">Imprimir ou PDF</button></div>`,b=>{
       b.querySelector('#cTxt').textContent=c.text;b.querySelector('#cCopy').onclick=()=>copy(c.text);b.querySelector('#cPrint').onclick=()=>printDoc('Relatório de pacientes – '+place(btn.dataset.crep).name,c.html)})});
@@ -1093,9 +1241,14 @@ function renderSettings(){
     <button class="link" id="resetMsg">Voltar ao texto padrão</button></div></div>
   <div class="section"><div class="label">Cópia de segurança</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
     <b>${backupLabel()}</b>
-    <div class="small muted">Seus dados, inclusive prontuários, ficam guardados só neste aparelho. O app avisa na agenda quando passar 7 dias sem cópia. Salve no iCloud Drive ou no Google Drive e guarde em local seguro, pois o arquivo contém dados de saúde dos pacientes.</div>
+    <div class="small muted">Seus dados, inclusive prontuários, ficam guardados só neste aparelho${AUTH?' e sincronizados na nuvem':''}. O app avisa na agenda quando passar 7 dias sem cópia. Salve no iCloud Drive ou no Google Drive e guarde em local seguro, pois o arquivo contém dados de saúde dos pacientes.</div>
     <div class="btnrow"><button class="btn primary" id="exp">Salvar cópia agora</button><label class="btn ghost" for="imp" style="cursor:pointer">Restaurar cópia</label></div>
     <input type="file" id="imp" accept="application/json,.json" hidden></div></div>
+  ${AUTH?`<div class="section"><div class="label">Sincronização na nuvem</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <div class="small muted">Conectado como <b>${esc(AUTH.email)}</b>. Suas alterações sincronizam automaticamente entre aparelhos.</div>
+    <button class="btn ghost block" id="syncNow">Sincronizar agora</button>
+    <button class="btn danger block" id="logout">Sair da conta</button>
+  </div></div>`:''}
   <div class="section"><div class="card small muted">Para usar como app no iPhone: abra no Safari, toque em Compartilhar e depois em <b>Adicionar à Tela de Início</b>.</div></div>
   <div class="section" style="margin-bottom:10px"><button class="btn danger block" id="wipe">Apagar todos os dados deste aparelho</button></div>`;
   $('#sName').onchange=e=>{S.profile.name=e.target.value.trim()||S.profile.name;save();toast('Nome salvo')};
@@ -1110,6 +1263,10 @@ function renderSettings(){
   $('#exp').onclick=backupSheet;
   $('#imp').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!d.places||!d.appts)throw 0;S=d;migrate();save();render();toast('Agenda restaurada')}catch(err){toast('Esse arquivo não é uma cópia da agenda')}};r.readAsText(f)};
   twoTap($('#wipe'),'Apagar todos os dados deste aparelho','Tem certeza? Toque de novo para apagar tudo',()=>{S=null;try{localStorage.removeItem(KEY)}catch(e){}render()});
+  if(AUTH){
+    $('#syncNow').onclick=async()=>{toast('Sincronizando…');try{await pushAll();toast('Sincronizado')}catch(e){toast('Não consegui sincronizar agora')}};
+    twoTap($('#logout'),'Sair da conta','Toque de novo para sair',()=>{clearAuth();render();toast('Você saiu da conta. Os dados continuam neste aparelho.')});
+  }
 }
 
 function editInsurer(id){

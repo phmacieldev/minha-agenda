@@ -1,0 +1,24 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: minha-agenda-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: minha_agenda
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - minha-agenda-db-data:/var/lib/postgresql/data
+      # Só roda na primeira vez (volume vazio). Para reaplicar depois de mudar
+      # o schema, use `npm run db:reset`.
+      - ./supabase/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d minha_agenda"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  minha-agenda-db-data:

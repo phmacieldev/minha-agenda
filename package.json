@@ -5,8 +5,12 @@
   "description": "PWA de agenda de atendimentos + API TypeScript (Vercel functions) com Postgres no Supabase",
   "scripts": {
     "test": "playwright test",
-    "dev:api": "npx vercel dev",
-    "typecheck": "tsc --noEmit"
+    "dev:api": "node scripts/dev.js",
+    "typecheck": "tsc --noEmit",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f db",
+    "db:reset": "docker compose down -v && docker compose up -d"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -22,6 +26,7 @@
     "@types/pg": "^8.11.10",
     "@vercel/node": "^3.2.24",
     "serve": "^14.2.5",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vercel": "^64.7.0"
   }
 }
