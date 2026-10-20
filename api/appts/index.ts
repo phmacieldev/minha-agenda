@@ -1,10 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { getPool } from '../../lib/db';
 import { withAuth, BadRequestError, NotFoundError } from '../../lib/handler';
 import { apptToJson } from '../../lib/mappers';
 
 const apptSchema = z.object({
+  id: z.string().uuid().optional(),
   patientId: z.string().uuid(),
   placeId: z.string().uuid(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date deve ser YYYY-MM-DD'),
@@ -19,7 +21,7 @@ const apptSchema = z.object({
   notes: z.string().optional().default(''),
 });
 
-const apptUpdateSchema = apptSchema.partial();
+const apptUpdateSchema = apptSchema.omit({ id: true }).partial();
 
 const columnByKey: Record<string, string> = {
   patientId: 'patient_id',
@@ -67,10 +69,17 @@ export default withAuth(async (req: VercelRequest, res: VercelResponse, auth) =>
       await assertOwned(pool, 'places', a.placeId, auth.userId, 'placeId');
       if (a.insurerId) await assertOwned(pool, 'insurers', a.insurerId, auth.userId, 'insurerId');
 
+      const id = a.id ?? randomUUID();
       const result = await pool.query(
-        `insert into appts (user_id, patient_id, place_id, date, time, dur, price, pay, insurer_id, ins_name, status, paid, notes)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning *`,
-        [auth.userId, a.patientId, a.placeId, a.date, a.time, a.dur, a.price, a.pay, a.insurerId ?? null, a.insName ?? null, a.status, a.paid, a.notes]
+        `insert into appts (id, user_id, patient_id, place_id, date, time, dur, price, pay, insurer_id, ins_name, status, paid, notes)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         on conflict (id) do update set
+           patient_id = excluded.patient_id, place_id = excluded.place_id, date = excluded.date, time = excluded.time,
+           dur = excluded.dur, price = excluded.price, pay = excluded.pay, insurer_id = excluded.insurer_id,
+           ins_name = excluded.ins_name, status = excluded.status, paid = excluded.paid, notes = excluded.notes
+         where appts.user_id = excluded.user_id
+         returning *`,
+        [id, auth.userId, a.patientId, a.placeId, a.date, a.time, a.dur, a.price, a.pay, a.insurerId ?? null, a.insName ?? null, a.status, a.paid, a.notes]
       );
       return res.status(201).json(apptToJson(result.rows[0]));
     }

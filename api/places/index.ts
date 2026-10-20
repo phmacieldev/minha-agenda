@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { getPool } from '../../lib/db';
 import { withAuth, BadRequestError, NotFoundError } from '../../lib/handler';
@@ -7,6 +8,7 @@ import { placeToJson } from '../../lib/mappers';
 const hoursSchema = z.record(z.string(), z.array(z.object({ s: z.string(), e: z.string() })));
 
 const placeSchema = z.object({
+  id: z.string().uuid().optional(),
   name: z.string().min(1),
   color: z.string().default('p1'),
   kind: z.enum(['clinica', 'particular']).default('clinica'),
@@ -18,7 +20,7 @@ const placeSchema = z.object({
   msg: z.string().nullable().optional(),
 });
 
-const placeUpdateSchema = placeSchema.partial();
+const placeUpdateSchema = placeSchema.omit({ id: true }).partial();
 
 function idFromQuery(req: VercelRequest): string | undefined {
   const raw = req.query.id;
@@ -38,10 +40,16 @@ export default withAuth(async (req: VercelRequest, res: VercelResponse, auth) =>
       const parsed = placeSchema.safeParse(req.body);
       if (!parsed.success) throw new BadRequestError(JSON.stringify(parsed.error.flatten()));
       const p = parsed.data;
+      const id = p.id ?? randomUUID();
       const result = await pool.query(
-        `insert into places (user_id, name, color, kind, address, price, duration, hours, info, msg)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *`,
-        [auth.userId, p.name, p.color, p.kind, p.address, p.price, p.duration, JSON.stringify(p.hours), p.info, p.msg ?? null]
+        `insert into places (id, user_id, name, color, kind, address, price, duration, hours, info, msg)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         on conflict (id) do update set
+           name = excluded.name, color = excluded.color, kind = excluded.kind, address = excluded.address,
+           price = excluded.price, duration = excluded.duration, hours = excluded.hours, info = excluded.info, msg = excluded.msg
+         where places.user_id = excluded.user_id
+         returning *`,
+        [id, auth.userId, p.name, p.color, p.kind, p.address, p.price, p.duration, JSON.stringify(p.hours), p.info, p.msg ?? null]
       );
       return res.status(201).json(placeToJson(result.rows[0]));
     }

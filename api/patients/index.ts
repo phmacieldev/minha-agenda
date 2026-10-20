@@ -1,10 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { getPool } from '../../lib/db';
 import { withAuth, BadRequestError, NotFoundError } from '../../lib/handler';
 import { patientToJson } from '../../lib/mappers';
 
 const patientSchema = z.object({
+  id: z.string().uuid().optional(),
   name: z.string().min(1),
   phone: z.string().optional().default(''),
   notes: z.string().optional().default(''),
@@ -18,7 +20,7 @@ const patientSchema = z.object({
   diag: z.string().nullable().optional(),
 });
 
-const patientUpdateSchema = patientSchema.partial();
+const patientUpdateSchema = patientSchema.omit({ id: true }).partial();
 
 const columnByKey: Record<string, string> = { insurerId: 'insurer_id' };
 
@@ -47,10 +49,17 @@ export default withAuth(async (req: VercelRequest, res: VercelResponse, auth) =>
       const p = parsed.data;
       if (p.insurerId) await assertInsurerOwned(pool, p.insurerId, auth.userId);
 
+      const id = p.id ?? randomUUID();
       const result = await pool.query(
-        `insert into patients (user_id, name, phone, notes, pay, insurer_id, birth, sex, mother, father, card, diag)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning *`,
-        [auth.userId, p.name, p.phone, p.notes, p.pay, p.insurerId ?? null, p.birth ?? null, p.sex ?? null, p.mother ?? null, p.father ?? null, p.card ?? null, p.diag ?? null]
+        `insert into patients (id, user_id, name, phone, notes, pay, insurer_id, birth, sex, mother, father, card, diag)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         on conflict (id) do update set
+           name = excluded.name, phone = excluded.phone, notes = excluded.notes, pay = excluded.pay,
+           insurer_id = excluded.insurer_id, birth = excluded.birth, sex = excluded.sex, mother = excluded.mother,
+           father = excluded.father, card = excluded.card, diag = excluded.diag
+         where patients.user_id = excluded.user_id
+         returning *`,
+        [id, auth.userId, p.name, p.phone, p.notes, p.pay, p.insurerId ?? null, p.birth ?? null, p.sex ?? null, p.mother ?? null, p.father ?? null, p.card ?? null, p.diag ?? null]
       );
       return res.status(201).json(patientToJson(result.rows[0]));
     }
