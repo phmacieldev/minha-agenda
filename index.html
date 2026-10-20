@@ -111,6 +111,7 @@ h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.
 .avatar{width:38px;height:38px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-weight:700;flex:none;font-size:15px}
 .section{margin-top:22px;display:flex;flex-direction:column;gap:10px}
 .search{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface)}
+.datebox{min-height:40px;max-width:160px;padding:6px 8px;font-size:14px;cursor:pointer}
 
 /* Summary */
 .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
@@ -1144,8 +1145,8 @@ function renderReports(){
   const filteredList=q?sortedList.filter(a=>(patient(a.patientId)?.name||'').toLowerCase().includes(q)):sortedList;
   if(!R.places.find(x=>x.p.id===ui.rep.placeTab))ui.rep.placeTab=R.places[0]?.p.id||null;
   const activePlace=R.places.find(x=>x.p.id===ui.rep.placeTab);
-  app.innerHTML=`<div class="top"><div><h1>Relatórios</h1><div class="sub">${R.pr.label}</div></div>
-    <div style="display:flex;gap:6px;align-items:center"><input type="date" class="input num" id="rJump" value="${ui.rep.anchor}" style="min-height:40px;padding:6px 8px;font-size:13px;max-width:140px"><button class="iconbtn" id="rPrev" aria-label="Período anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg></button><button class="iconbtn" id="rNext" aria-label="Próximo período"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg></button></div></div>
+  app.innerHTML=`<div class="top" style="flex-wrap:wrap;row-gap:10px"><div><h1>Relatórios</h1><div class="sub">${R.pr.label}</div></div>
+    <div style="display:flex;gap:6px;align-items:center;margin-left:auto"><input type="date" class="input num datebox" id="rJump" value="${ui.rep.anchor}"><button class="iconbtn" id="rPrev" aria-label="Período anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg></button><button class="iconbtn" id="rNext" aria-label="Próximo período"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg></button></div></div>
   <div class="seg solid" id="rMode" style="margin-bottom:14px"><button data-v="dia">Diária</button><button data-v="semana">Semanal</button><button data-v="mes">Mensal</button></div>
   <div class="stats three">
     <div class="stat"><div class="label">Atendidos</div><div class="v">${R.done.length}</div></div>
@@ -1179,6 +1180,7 @@ function renderReports(){
   const shift=k=>{const a=parse(ui.rep.anchor);ui.rep.anchor=iso(ui.rep.mode==='semana'?addDays(a,7*k):ui.rep.mode==='dia'?addDays(a,k):new Date(a.getFullYear(),a.getMonth()+k,1));render()};
   $('#rPrev').onclick=()=>shift(-1);$('#rNext').onclick=()=>shift(1);
   $('#rJump').onchange=e=>{if(e.target.value){ui.rep.anchor=e.target.value;render()}};
+  $('#rJump').onclick=e=>{try{e.target.showPicker&&e.target.showPicker()}catch(err){}};
   $('#rList').onclick=()=>{ui.showList=!ui.showList;render()};
   $('#rCopy').onclick=()=>openSheet('Relatório em texto',`<pre class="share" id="rTxt"></pre><button class="btn primary block" id="rTxtCopy">Copiar texto</button>`,b=>{b.querySelector('#rTxt').textContent=reportText(R);b.querySelector('#rTxtCopy').onclick=()=>copy(reportText(R))});
   $('#rCsv').onclick=()=>saveFile(`atendimentos-${R.pr.file}.csv`,reportCsv(R),'text/csv;charset=utf-8');

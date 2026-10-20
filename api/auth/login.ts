@@ -25,8 +25,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   );
   const user = result.rows[0];
   // Mesma mensagem genérica se o e-mail não existir ou a senha estiver errada,
-  // para não revelar quais e-mails têm conta.
-  if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+  // para não revelar quais e-mails têm conta. Sempre roda o bcrypt.compare
+  // (contra um hash fixo quando a usuária não existe) para não vazar essa
+  // informação pelo tempo de resposta.
+  const DUMMY_HASH = '$2a$10$CwTycUXWue0Thq9StjUM0uJ8y2M9VX9f6V7z0g5l4R0w1XqS6Z2Nq';
+  const ok = await bcrypt.compare(password, user?.password_hash ?? DUMMY_HASH);
+  if (!user || !ok) {
     return res.status(401).json({ error: 'invalid_credentials' });
   }
 

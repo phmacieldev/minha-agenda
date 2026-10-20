@@ -13,7 +13,7 @@ function secret(): string {
 }
 
 export function signToken(payload: AuthPayload): string {
-  return jwt.sign(payload, secret(), { expiresIn: '30d' });
+  return jwt.sign(payload, secret(), { expiresIn: '180d' });
 }
 
 export class UnauthorizedError extends Error {}
