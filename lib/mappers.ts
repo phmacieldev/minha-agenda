@@ -32,6 +32,28 @@ export function patientToJson(row: any) {
   };
 }
 
+export function insurerToJson(row: any) {
+  return {
+    id: row.id,
+    name: row.name,
+    price: Number(row.price),
+    prices: row.prices,
+  };
+}
+
+export function exceptionToJson(row: any) {
+  return {
+    id: row.id,
+    date: row.date,
+    placeId: row.place_id,
+    type: row.type,
+    allDay: row.all_day,
+    s: row.s,
+    e: row.e,
+    note: row.note,
+  };
+}
+
 export function apptToJson(row: any) {
   return {
     id: row.id,
