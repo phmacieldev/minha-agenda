@@ -14,11 +14,18 @@ Abra o endereço mostrado (ex. `http://localhost:3000`) no navegador. Para testa
 
 ## Publicando
 
-O projeto é um site estático (sem servidor). Qualquer host estático serve (Vercel, Netlify, GitHub Pages...). Para publicar na Vercel:
+O projeto é um site estático (sem servidor). Qualquer host estático serve (Vercel, Netlify, GitHub Pages...).
+
+Publicado na Vercel em **https://minha-agenda-coral.vercel.app**, conectado ao repositório no GitHub: todo `git push` para `master` dispara um deploy automático de produção. Não é mais necessário rodar `vercel` manualmente.
+
+## Testes de regressão
+
+Um teste leve com Playwright cobre o fluxo principal (carregar o app, usar "Ver com exemplos", agendar um atendimento com convênio novo, editar um horário, gerar relatório semanal) e falha se aparecer qualquer erro no console. Viewport simula um iPhone 13 (390×844).
 
 ```bash
-npx vercel        # preview
-npx vercel --prod # produção
+npm install
+npx playwright install webkit
+npm test
 ```
 
 ## Estrutura

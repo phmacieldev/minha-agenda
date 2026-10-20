@@ -1,0 +1,13 @@
+{
+  "name": "minha-agenda",
+  "private": true,
+  "version": "1.0.0",
+  "description": "PWA de agenda de atendimentos (sem build; este package.json serve só para os testes)",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "serve": "^14.2.5"
+  }
+}
