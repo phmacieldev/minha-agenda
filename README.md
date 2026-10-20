@@ -77,14 +77,18 @@ Se mudar o schema (`supabase/schema.sql`) depois de já ter subido o banco uma v
 **Endpoints prontos até agora** (todos sob `/api`; os de CRUD usam `?id=` em vez de segmento de rota, porque o plano Hobby da Vercel limita a 12 Serverless Functions por deployment — um `index.ts` por recurso cuida de lista/criação/leitura/atualização/exclusão em vez de dois arquivos por recurso):
 
 - `GET /api/health` — ping
-- `POST /api/auth/signup` — `{ email, password, name, title? }` → `{ token }`
+- `POST /api/auth/signup` — `{ email, password, name, title? }` → `{ token }`. Cria a usuária (senha com bcrypt) e dispara um e-mail de confirmação (best-effort — se o envio falhar, a conta é criada do mesmo jeito).
 - `POST /api/auth/login` — `{ email, password }` → `{ token }`
-- `GET /api/auth/me` — header `Authorization: Bearer <token>` → dados da usuária logada
-- `places`, `patients`, `appts`, `insurers`, `exceptions` — todos com o mesmo padrão, exigindo `Authorization: Bearer <token>`:
-  - `GET /api/{recurso}` — lista (appts e exceptions aceitam `?from=YYYY-MM-DD&to=YYYY-MM-DD`; appts também aceita `?placeId=`)
+- `GET /api/auth/me` — header `Authorization: Bearer <token>` → dados da usuária logada, incluindo `emailVerified`
+- `GET /api/auth/verify?token=<token>` — confirma o e-mail (é o link que vem no e-mail; retorna uma página HTML simples, não JSON)
+- `POST /api/auth/verify` — header `Authorization: Bearer <token>` → reenvia o e-mail de confirmação para quem ainda não confirmou
+- `places`, `patients`, `appts`, `insurers`, `exceptions`, `records` — todos com o mesmo padrão, exigindo `Authorization: Bearer <token>`:
+  - `GET /api/{recurso}` — lista (appts e exceptions aceitam `?from=YYYY-MM-DD&to=YYYY-MM-DD`; appts também aceita `?placeId=`; records aceita `?patientId=`)
   - `GET /api/{recurso}?id=<id>` — um item
-  - `POST /api/{recurso}` — cria
+  - `POST /api/{recurso}` — cria (upsert por `id`, se enviado)
   - `PUT` ou `PATCH /api/{recurso}?id=<id>` — atualiza (campos parciais)
   - `DELETE /api/{recurso}?id=<id>` — remove
 
-Nunca commite `.env.local` — ele já está no `.gitignore`.
+**E-mail transacional:** usa [Resend](https://resend.com) (free tier). Sem `RESEND_API_KEY` configurada, o envio só fica registrado no log — não trava nada, então não é obrigatório para rodar local. Para testar de verdade: crie uma conta no Resend, pegue a API key, e configure `RESEND_API_KEY` (local: `.env`; produção: Vercel). `APP_URL` é usada para montar o link do e-mail (local já vem certo por padrão; em produção, configure como `https://minha-agenda-coral.vercel.app`).
+
+Nunca commite `.env` nem `.env.local` — já estão no `.gitignore`.

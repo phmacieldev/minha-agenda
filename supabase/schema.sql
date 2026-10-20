@@ -13,6 +13,14 @@ create table if not exists users (
   created_at timestamptz not null default now()
 );
 
+-- Verificação de e-mail. `alter ... add column if not exists` em vez de um
+-- migrador dedicado (ex. node-pg-migrate) porque o projeto ainda é pequeno;
+-- reavaliar se o schema crescer mais. Rodar este arquivo de novo em um banco
+-- que já tem a tabela `users` só adiciona o que falta, não apaga nada.
+alter table users add column if not exists email_verified_at timestamptz;
+alter table users add column if not exists verification_token text;
+alter table users add column if not exists verification_token_expires_at timestamptz;
+
 create table if not exists places (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references users(id) on delete cascade,
