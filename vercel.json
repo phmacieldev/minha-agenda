@@ -1,4 +1,7 @@
 {
+  "crons": [
+    { "path": "/api/cron/backup", "schedule": "0 7 * * *" }
+  ],
   "headers": [
     {
       "source": "/(.*)",

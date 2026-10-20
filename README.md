@@ -82,13 +82,18 @@ Se mudar o schema (`supabase/schema.sql`) depois de já ter subido o banco uma v
 - `GET /api/auth/me` — header `Authorization: Bearer <token>` → dados da usuária logada, incluindo `emailVerified`
 - `GET /api/auth/verify?token=<token>` — confirma o e-mail (é o link que vem no e-mail; retorna uma página HTML simples, não JSON)
 - `POST /api/auth/verify` — header `Authorization: Bearer <token>` → reenvia o e-mail de confirmação para quem ainda não confirmou
+- `PUT` ou `PATCH /api/auth/me` — header `Authorization: Bearer <token>`, body `{ name?, title? }` → atualiza o perfil
+- `PUT` ou `PATCH /api/auth/me?action=password` — body `{ currentPassword, newPassword }` → troca a senha
 - `places`, `patients`, `appts`, `insurers`, `exceptions`, `records` — todos com o mesmo padrão, exigindo `Authorization: Bearer <token>`:
   - `GET /api/{recurso}` — lista (appts e exceptions aceitam `?from=YYYY-MM-DD&to=YYYY-MM-DD`; appts também aceita `?placeId=`; records aceita `?patientId=`)
   - `GET /api/{recurso}?id=<id>` — um item
   - `POST /api/{recurso}` — cria (upsert por `id`, se enviado)
   - `PUT` ou `PATCH /api/{recurso}?id=<id>` — atualiza (campos parciais)
   - `DELETE /api/{recurso}?id=<id>` — remove
+- `GET /api/cron/backup` — disparado automaticamente 1x/dia pela Vercel Cron (ver abaixo); não é pra usar manualmente
 
 **E-mail transacional:** usa [Resend](https://resend.com) (free tier). Sem `RESEND_API_KEY` configurada, o envio só fica registrado no log — não trava nada, então não é obrigatório para rodar local. Para testar de verdade: crie uma conta no Resend, pegue a API key, e configure `RESEND_API_KEY` (local: `.env`; produção: Vercel). `APP_URL` é usada para montar o link do e-mail (local já vem certo por padrão; em produção, configure como `https://minha-agenda-coral.vercel.app`).
+
+**Backup automático do banco:** a Vercel Cron chama `/api/cron/backup` 1x por dia (07:00 UTC — o plano Hobby só permite 1x/dia mesmo), que salva um dump de todas as tabelas como uma linha JSON na própria tabela `backups` e apaga cópias além das últimas 14 (duas semanas), pra nunca crescer sem limite. É uma rede de segurança a nível de banco — separado do botão "Salvar cópia agora" em Ajustes, que é a cópia local (JSON) que a própria usuária guarda no celular/nuvem pessoal.
 
 Nunca commite `.env` nem `.env.local` — já estão no `.gitignore`.
