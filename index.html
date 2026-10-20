@@ -163,6 +163,11 @@ body.has-demobar .wrap{padding-top:calc(env(safe-area-inset-top,0px) + 58px)}
 
 /* Forms */
 .field{display:flex;flex-direction:column;gap:6px}
+.pwfield{position:relative;display:flex}
+.pwfield input{flex:1;padding-right:46px}
+.pwfield .eye{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:36px;height:36px;border:0;background:transparent;color:var(--muted);display:grid;place-items:center;border-radius:8px}
+.pwfield .eye svg{width:20px;height:20px}
+.pwfield .eye:active{background:var(--line)}
 .field>span{font-size:13px;font-weight:600;color:var(--muted)}
 .input,select.input,textarea.input{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface);font-size:16px;min-height:48px;appearance:none;-webkit-appearance:none}
 select.input{background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 20px) 21px,calc(100% - 15px) 21px;background-size:5px 5px;background-repeat:no-repeat;padding-right:36px}
@@ -344,6 +349,12 @@ const DEFAULT_MSG='Olá, {paciente}! Passando para confirmar seu atendimento {di
 const $=s=>document.querySelector(s);
 const app=$('#app');
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const EYE_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18M10.6 10.6a3 3 0 0 0 4.24 4.24M9.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a15.7 15.7 0 0 1-3.17 4.1M6.2 6.2A15.7 15.7 0 0 0 2 12s3.6 7 10 7c1.1 0 2.13-.18 3.06-.5"/></svg>';
+// Campo de senha com "olhinho" pra mostrar/esconder o que foi digitado.
+const pwField=(id,label,opts)=>{opts=opts||{};return `<label class="field"><span>${esc(label)}</span><div class="pwfield"><input class="input" id="${id}" type="password" ${opts.placeholder?`placeholder="${esc(opts.placeholder)}"`:''} autocomplete="${opts.autocomplete||'current-password'}"><button type="button" class="eye" data-pw="${id}" aria-label="Mostrar senha">${EYE_SVG}</button></div></label>`};
+const wireEye=id=>{const btn=document.querySelector(`[data-pw="${id}"]`),inp=$('#'+id);if(!btn||!inp)return;
+  btn.onclick=()=>{const show=inp.type==='password';inp.type=show?'text':'password';btn.innerHTML=show?EYE_OFF_SVG:EYE_SVG;btn.setAttribute('aria-label',show?'Esconder senha':'Mostrar senha')}};
 const uid=()=>(crypto.randomUUID?crypto.randomUUID():'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16)}));
 const pad=n=>String(n).padStart(2,'0');
 const iso=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
@@ -603,11 +614,11 @@ function onboarding(){
           <span class="small muted" style="font-weight:400">Toque na bolinha colorida para escolher a cor de cada local. Depois você ajusta horários na aba Horários e cadastra os convênios em Ajustes.</span>
         </div>
         <label class="field"><span>E-mail</span><input class="input" id="obEmail" type="email" placeholder="voce@email.com" autocomplete="email"></label>
-        <label class="field"><span>Senha</span><input class="input" id="obPassword" type="password" placeholder="Pelo menos 6 caracteres" autocomplete="new-password"></label>
+        ${pwField('obPassword','Senha',{placeholder:'Pelo menos 6 caracteres',autocomplete:'new-password'})}
         <button class="btn primary block" id="obGo">Criar conta</button>
       `:`
         <label class="field"><span>E-mail</span><input class="input" id="liEmail" type="email" placeholder="voce@email.com" autocomplete="email"></label>
-        <label class="field"><span>Senha</span><input class="input" id="liPassword" type="password" autocomplete="current-password"></label>
+        ${pwField('liPassword','Senha',{autocomplete:'current-password'})}
         <button class="btn primary block" id="liGo">Entrar</button>
       `}
       <button class="btn ghost block" id="obDemo">Ver com exemplos primeiro</button>
@@ -618,6 +629,7 @@ function onboarding(){
       $('#obName').value=obName;$('#obTitle').value=obTitle;$('#obEmail').value=obEmail;$('#obPassword').value=obPassword;
       $('#obName').oninput=e=>obName=e.target.value;$('#obTitle').oninput=e=>obTitle=e.target.value;
       $('#obEmail').oninput=e=>obEmail=e.target.value;$('#obPassword').oninput=e=>obPassword=e.target.value;
+      wireEye('obPassword');
       app.querySelectorAll('[data-pi]').forEach(inp=>inp.oninput=()=>places[+inp.dataset.pi].name=inp.value);
       app.querySelectorAll('[data-col]').forEach(b=>b.onclick=()=>{const i=+b.dataset.col;openCol=openCol===i?-1:i;draw()});
       if(openCol>=0&&places[openCol]){const sw=app.querySelector(`[data-col="${openCol}"]`);
@@ -640,6 +652,7 @@ function onboarding(){
     }else{
       $('#liEmail').oninput=e=>obEmail=e.target.value;$('#liPassword').oninput=e=>obPassword=e.target.value;
       $('#liEmail').value=obEmail;$('#liPassword').value=obPassword;
+      wireEye('liPassword');
       $('#liGo').onclick=async()=>{
         const email=$('#liEmail').value.trim(),password=$('#liPassword').value;
         if(!email||!password){toast('Preencha e-mail e senha');return}
@@ -1355,11 +1368,12 @@ function renderSetSeguranca(body){
     <button class="btn ghost block" id="syncNow">Sincronizar agora</button>
   </div></div>
   <div class="section"><div class="label">Trocar senha</div><div class="card" style="display:flex;flex-direction:column;gap:12px">
-    <label class="field"><span>Senha atual</span><input class="input" id="pwCurrent" type="password" autocomplete="current-password"></label>
-    <label class="field"><span>Nova senha</span><input class="input" id="pwNew" type="password" placeholder="Pelo menos 6 caracteres" autocomplete="new-password"></label>
+    ${pwField('pwCurrent','Senha atual',{autocomplete:'current-password'})}
+    ${pwField('pwNew','Nova senha',{placeholder:'Pelo menos 6 caracteres',autocomplete:'new-password'})}
     <button class="btn primary block" id="pwSave">Salvar nova senha</button>
   </div></div>
   <div class="section" style="margin-bottom:10px"><button class="btn danger block" id="logout">Sair da conta</button></div>`;
+  wireEye('pwCurrent');wireEye('pwNew');
   $('#syncNow').onclick=async()=>{toast('Sincronizando…');try{await pushAll();toast('Sincronizado')}catch(e){toast('Não consegui sincronizar agora')}};
   $('#pwSave').onclick=async()=>{
     const cur=$('#pwCurrent').value,nw=$('#pwNew').value;
