@@ -20,7 +20,7 @@
 /* Layout: app de uma coluna, faixa da semana no topo, linha do tempo do dia, barra de abas fixa embaixo */
 :root{
   --bg:#F6F5FA; --surface:#FFFFFF; --ink:#1E1B2E; --muted:#6B6880; --line:#E4E1EE;
-  --accent:#C2256A; --accent-ink:#FFFFFF; --accent-soft:#F8E5ED;
+  --accent:#C2256A; --accent-ink:#FFFFFF; --accent-soft:color-mix(in srgb, var(--accent) 16%, var(--surface));
   --ok:#1F8A4C; --ok-soft:#E3F4EA; --warn:#B46A0B; --warn-soft:#FBF0DF; --bad:#C23B3B; --bad-soft:#FBE6E6;
   --p1:#138A80; --p2:#D2554A; --p3:#B7791F; --p4:#2F6FD6; --p5:#C2408F; --p6:#3E8E3A;
   --display:"Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
@@ -30,12 +30,27 @@
 }
 @media (prefers-color-scheme: dark){:root{
   --bg:#121019; --surface:#1C1926; --ink:#ECEAF4; --muted:#9A96AD; --line:#2D2939;
-  --accent:#FF7AB6; --accent-ink:#14111D; --accent-soft:#412538;
+  --accent:#FF7AB6; --accent-ink:#14111D;
   --ok:#5CCB8A; --ok-soft:#173326; --warn:#E9A94E; --warn-soft:#3A2B14; --bad:#F07E7E; --bad-soft:#3D1D1F;
   --p1:#4FC9BC; --p2:#F08A7F; --p3:#E8B04E; --p4:#78A6F5; --p5:#EB86C4; --p6:#82C97D;
   --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
   color-scheme:dark;
 }}
+/* Cor de destaque personalizável (Ajustes › Aparência): só troca --accent/--accent-ink
+   (--accent-soft se recalcula sozinho pela fórmula acima), nunca --bg/--ink, então
+   continua seguindo o tema claro/escuro do aparelho. */
+:root[data-accent="azul"]{--accent:#2F6FD6;--accent-ink:#FFFFFF}
+:root[data-accent="verde"]{--accent:#1F8A4C;--accent-ink:#FFFFFF}
+:root[data-accent="roxo"]{--accent:#7C3AED;--accent-ink:#FFFFFF}
+:root[data-accent="laranja"]{--accent:#C2730B;--accent-ink:#FFFFFF}
+:root[data-accent="teal"]{--accent:#138A80;--accent-ink:#FFFFFF}
+@media (prefers-color-scheme: dark){
+  :root[data-accent="azul"]{--accent:#78A6F5;--accent-ink:#14111D}
+  :root[data-accent="verde"]{--accent:#5CCB8A;--accent-ink:#14111D}
+  :root[data-accent="roxo"]{--accent:#B389F5;--accent-ink:#14111D}
+  :root[data-accent="laranja"]{--accent:#F0B45E;--accent-ink:#14111D}
+  :root[data-accent="teal"]{--accent:#4FC9BC;--accent-ink:#14111D}
+}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 var(--body);-webkit-font-smoothing:antialiased;overscroll-behavior-y:none}
@@ -111,7 +126,7 @@ h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.
 .avatar{width:38px;height:38px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-weight:700;flex:none;font-size:15px}
 .section{margin-top:22px;display:flex;flex-direction:column;gap:10px}
 .search{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface)}
-.datebox{min-height:40px;max-width:160px;padding:6px 8px;font-size:14px;cursor:pointer}
+.datebox{min-height:40px;max-width:210px;padding:6px 10px;font-size:14px;cursor:pointer;white-space:nowrap}
 
 /* Summary */
 .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
@@ -189,6 +204,32 @@ pre.share{white-space:pre-wrap;background:var(--surface);border:1px solid var(--
 
 /* Toast */
 .toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 150px);transform:translate(-50%,20px);background:var(--ink);color:var(--bg);padding:12px 18px;border-radius:12px;font-weight:600;font-size:14px;z-index:60;opacity:0;transition:.2s;pointer-events:none;max-width:calc(100% - 32px);text-align:center}
+
+/* Visualização de impressão (dentro do app: window.open não funciona no PWA instalado) */
+#printArea{position:fixed;inset:0;z-index:70;background:#fff;color:#1e1b2e;overflow-y:auto;-webkit-overflow-scrolling:touch}
+#printArea .pdBar{position:sticky;top:0;background:#fff;padding:calc(env(safe-area-inset-top,0px) + 10px) max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));display:flex;gap:8px;border-bottom:1px solid #e4e1ee}
+#printArea .pdBar button{font:15px/1 var(--body);font-weight:600;padding:11px 16px;border-radius:10px;border:0;cursor:pointer}
+#printArea .pdPrint{background:#5b3fd6;color:#fff}
+#printArea .pdClose{background:#e4e1ee;color:#1e1b2e}
+#printArea .pdInner{font:14px/1.5 -apple-system,"Segoe UI",Arial,sans-serif;max-width:760px;margin:0 auto;padding:24px max(20px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 24px) max(20px,env(safe-area-inset-left,0px))}
+#printArea h1{font-size:20px;margin:0 0 14px}
+#printArea h2{font-size:15px;margin:22px 0 8px;text-transform:uppercase;letter-spacing:.05em;color:#5b3fd6}
+#printArea .kv{border-collapse:collapse;width:100%}
+#printArea .kv th{text-align:left;width:38%;color:#6b6880;font-weight:600;padding:5px 8px 5px 0;vertical-align:top}
+#printArea .kv td{padding:5px 0}
+#printArea .grid{border-collapse:collapse;width:100%;font-size:13px}
+#printArea .grid th,#printArea .grid td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top}
+#printArea .grid th{background:#f3f1fa}
+#printArea .ev{border-top:1px solid #e4e1ee;padding:10px 0}
+#printArea .ev p{white-space:pre-wrap;margin:4px 0}
+#printArea .meta{color:#6b6880}
+#printArea .sign{margin-top:48px;text-align:center}
+#printArea .sign .line{width:260px;border-top:1px solid #1e1b2e;margin:0 auto 6px}
+@media print{
+  body>*:not(#printArea){display:none!important}
+  #printArea{position:static;overflow:visible}
+  #printArea .pdBar{display:none}
+}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 
 /* Onboarding */
@@ -288,6 +329,7 @@ pre.share{white-space:pre-wrap;background:var(--surface);border:1px solid var(--
   <div class="sb" id="sheetBody"></div>
 </section>
 <div class="toast" id="toast"></div>
+<div id="printArea" hidden></div>
 
 <script>
 (()=>{
@@ -357,6 +399,14 @@ function migrate(){
   S.appts.forEach(a=>{if(!a.pay)a.pay='particular'});
 }
 migrate();
+const ACCENTS=[{key:'rosa',name:'Rosa'},{key:'azul',name:'Azul'},{key:'verde',name:'Verde'},{key:'roxo',name:'Roxo'},{key:'laranja',name:'Laranja'},{key:'teal',name:'Teal'}];
+const ACCENT_HEX={rosa:'#C2256A',azul:'#2F6FD6',verde:'#1F8A4C',roxo:'#7C3AED',laranja:'#C2730B',teal:'#138A80'};
+const accentPreview=k=>ACCENT_HEX[k]||ACCENT_HEX.rosa;
+function applyAccent(){
+  const a=S?.settings?.accent;
+  if(a&&a!=='rosa')document.documentElement.dataset.accent=a;else delete document.documentElement.dataset.accent;
+}
+applyAccent();
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('Não consegui salvar neste aparelho')}scheduleSync()}
 function blankHours(){const h={};for(let i=0;i<7;i++)h[i]=[];return h}
 function newPlace(name,color,kind){return{id:uid(),name,color,kind:kind||'clinica',address:'',price:0,duration:50,hours:blankHours()}}
@@ -403,7 +453,7 @@ async function pullAll(){
   const patients=patientsRaw.map(p=>Object.assign({},p,{records:byPatient[p.id]||[]}));
   setSyncIds({places:places.map(x=>x.id),insurers:insurers.map(x=>x.id),patients:patients.map(x=>x.id),appts:appts.map(x=>x.id),exceptions:exceptions.map(x=>x.id),records:records.map(x=>x.id)});
   const settings=(S&&S.settings)||{msg:DEFAULT_MSG};
-  return{v:2,profile:{name:me.name,title:me.title||''},places,patients,appts,insurers,exceptions,settings};
+  return{v:2,profile:{name:me.name,title:me.title||'',emailVerified:!!me.emailVerified},places,patients,appts,insurers,exceptions,settings};
 }
 
 let syncing=false,syncAgain=false;
@@ -437,7 +487,7 @@ function scheduleSync(){
   syncTimer=setTimeout(pushAll,900);
 }
 
-const ui={tab:'agenda',sel:todayISO(),week:iso(startOfWeek(new Date())),q:'',rep:{mode:'mes',anchor:todayISO(),q:'',shown:{},placeTab:null},showList:false};
+const ui={tab:'agenda',sel:todayISO(),week:iso(startOfWeek(new Date())),q:'',rep:{mode:'mes',anchor:todayISO(),q:'',shown:{},placeTab:null},showList:false,setTab:'perfil'};
 
 const place=id=>S.places.find(p=>p.id===id);
 const patient=id=>S.patients.find(p=>p.id===id);
@@ -584,7 +634,7 @@ function onboarding(){
         const btn=$('#obGo');btn.disabled=true;
         try{await apiSignup(email,password,name,$('#obTitle').value.trim())}
         catch(e){btn.disabled=false;toast(e.body&&e.body.error==='email_in_use'?'Esse e-mail já tem conta':(e.body&&e.body.error==='invalid_input'?'Confira o e-mail e a senha (mínimo 6 caracteres)':'Não consegui criar a conta. Tente de novo.'));return}
-        S={v:2,profile:{name,title:$('#obTitle').value.trim()},places:pl,patients:[],appts:[],insurers:[],exceptions:[],settings:{msg:DEFAULT_MSG}};
+        S={v:2,profile:{name,title:$('#obTitle').value.trim(),emailVerified:false},places:pl,patients:[],appts:[],insurers:[],exceptions:[],settings:{msg:DEFAULT_MSG}};
         save();go('horarios');toast('Conta criada! Agora ajuste seus dias e horários');
       };
     }else{
@@ -987,18 +1037,14 @@ function clinicReport(placeId,R){
 }
 
 function printDoc(title,inner){
-  const doc=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>
-    body{font:14px/1.5 -apple-system,"Segoe UI",Arial,sans-serif;color:#1e1b2e;max-width:760px;margin:24px auto;padding:0 20px}
-    h1{font-size:20px;margin:0 0 14px}h2{font-size:15px;margin:22px 0 8px;text-transform:uppercase;letter-spacing:.05em;color:#5b3fd6}
-    .kv{border-collapse:collapse;width:100%}.kv th{text-align:left;width:38%;color:#6b6880;font-weight:600;padding:5px 8px 5px 0;vertical-align:top}.kv td{padding:5px 0}
-    .grid{border-collapse:collapse;width:100%;font-size:13px}.grid th,.grid td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top}.grid th{background:#f3f1fa}
-    .ev{border-top:1px solid #e4e1ee;padding:10px 0}.ev p{white-space:pre-wrap;margin:4px 0}.meta{color:#6b6880}
-    .sign{margin-top:48px;text-align:center}.sign .line{width:260px;border-top:1px solid #1e1b2e;margin:0 auto 6px}
-    .bar{position:sticky;top:0;background:#fff;padding:10px 0;display:flex;gap:8px}.bar button{font:inherit;padding:10px 16px;border-radius:10px;border:0;background:#5b3fd6;color:#fff;font-weight:600}
-    @media print{.bar{display:none}body{margin:0}}</style></head><body><div class="bar"><button onclick="print()">Imprimir ou salvar PDF</button><button onclick="close()" style="background:#e4e1ee;color:#1e1b2e">Fechar</button></div>${inner}</body></html>`;
-  const w=window.open('','_blank');
-  if(w){w.document.open();w.document.write(doc);w.document.close();return}
-  saveFile(title.replace(/[^\wÀ-ú -]/g,'').trim()+'.html',doc,'text/html');
+  // Mostra dentro do próprio app em vez de window.open: um PWA instalado na
+  // tela de início do iPhone não consegue abrir uma janela/aba nova.
+  const el=$('#printArea');
+  el.innerHTML=`<div class="pdBar"><button class="pdPrint">Imprimir ou salvar PDF</button><button class="pdClose">Fechar</button></div><div class="pdInner">${inner}</div>`;
+  el.hidden=false;
+  el.querySelector('.pdPrint').onclick=()=>window.print();
+  el.querySelector('.pdClose').onclick=()=>{el.hidden=true;el.innerHTML=''};
+  el.scrollTop=0;
 }
 
 /* ---------- horários ---------- */
@@ -1222,51 +1268,122 @@ function reportCsv(R){
 }
 
 /* ---------- ajustes ---------- */
+const SETTINGS_TABS=[['perfil','Perfil'],['atendimento','Atendimento'],['aparencia','Aparência'],['seguranca','Segurança'],['dados','Dados']];
 function renderSettings(){
-  app.innerHTML=`<div class="top"><div><h1>Ajustes</h1><div class="sub">Locais, convênios e mensagens</div></div></div>
-  ${S.demo?`<div class="info" style="margin-bottom:6px">Você está usando dados de exemplo. <button class="link" id="clearDemo" style="padding:0">Começar com minha agenda</button></div>`:''}
-  <div class="section"><div class="label">Onde você atende</div>
+  if(!SETTINGS_TABS.some(t=>t[0]===ui.setTab))ui.setTab='perfil';
+  app.innerHTML=`<div class="top"><div><h1>Ajustes</h1><div class="sub">Perfil, atendimento e preferências</div></div></div>
+  ${S.demo?`<div class="info" style="margin-bottom:10px">Você está usando dados de exemplo. <button class="link" id="clearDemo" style="padding:0">Começar com minha agenda</button></div>`:''}
+  <div class="seg solid" id="setTabs" style="margin-bottom:16px">${SETTINGS_TABS.map(([k,l])=>`<button data-v="${k}">${l}</button>`).join('')}</div>
+  <div id="setBody"></div>`;
+  segSelect($('#setTabs'),ui.setTab);
+  $('#setTabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{ui.setTab=b.dataset.v;render()});
+  if($('#clearDemo'))$('#clearDemo').onclick=()=>{S=null;try{localStorage.removeItem(KEY)}catch(e){}render()};
+  const body=$('#setBody');
+  if(ui.setTab==='perfil')renderSetPerfil(body);
+  else if(ui.setTab==='atendimento')renderSetAtendimento(body);
+  else if(ui.setTab==='aparencia')renderSetAparencia(body);
+  else if(ui.setTab==='seguranca')renderSetSeguranca(body);
+  else renderSetDados(body);
+}
+
+function renderSetPerfil(body){
+  body.innerHTML=`<div class="section"><div class="label">Seu perfil</div><div class="card" style="display:flex;flex-direction:column;gap:12px">
+    <label class="field"><span>Nome</span><input class="input" id="sName" value="${esc(S.profile.name)}"></label>
+    <label class="field"><span>Profissão</span><input class="input" id="sTitle" value="${esc(S.profile.title||'')}" placeholder="Ex.: Fonoaudióloga"></label>
+    ${AUTH?`<label class="field"><span>E-mail</span><div class="input" style="display:flex;align-items:center;color:var(--muted)">${esc(AUTH.email)}</div></label>`:''}
+  </div></div>
+  ${AUTH?`<div class="section" style="margin-bottom:10px"><div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><b>E-mail de confirmação</b><span class="pill" id="evBadge" style="background:var(--line);color:var(--muted)">verificando…</span></div>
+    <div class="small muted" id="evHint">Confira se o e-mail da sua conta já foi confirmado.</div>
+    <button class="btn ghost block" id="evResend" hidden>Reenviar e-mail de confirmação</button>
+  </div></div>`:''}`;
+  $('#sName').onchange=e=>{S.profile.name=e.target.value.trim()||S.profile.name;save();toast('Nome salvo');if(AUTH)apiFetch('/auth/me',{method:'PUT',body:JSON.stringify({name:S.profile.name})}).catch(()=>{})};
+  $('#sTitle').onchange=e=>{S.profile.title=e.target.value.trim();save();toast('Profissão salva');if(AUTH)apiFetch('/auth/me',{method:'PUT',body:JSON.stringify({title:S.profile.title})}).catch(()=>{})};
+  if(AUTH){
+    const badge=$('#evBadge'),hint=$('#evHint'),btn=$('#evResend');
+    const paint=verified=>{
+      S.profile.emailVerified=verified;
+      badge.textContent=verified?'confirmado':'não confirmado';
+      badge.style.background=verified?'var(--ok-soft)':'var(--warn-soft)';
+      badge.style.color=verified?'var(--ok)':'var(--warn)';
+      hint.textContent=verified?'Tudo certo com o seu e-mail.':'Confirme seu e-mail para garantir a recuperação da conta.';
+      btn.hidden=verified;
+    };
+    paint(!!S.profile.emailVerified);
+    apiFetch('/auth/me').then(me=>{paint(!!me.emailVerified);save()}).catch(()=>{});
+    btn.onclick=async()=>{btn.disabled=true;try{const r=await apiFetch('/auth/verify',{method:'POST'});toast(r.alreadyVerified?'Esse e-mail já estava confirmado':'E-mail de confirmação reenviado')}catch(e){toast('Não consegui reenviar agora')}btn.disabled=false};
+  }
+}
+
+function renderSetAtendimento(body){
+  body.innerHTML=`<div class="section"><div class="label">Onde você atende</div>
     <div class="rows">${S.places.map(p=>`<button class="row" data-pl="${p.id}"><span class="swatch" style="background:${cv(p.color)};width:14px;height:14px"></span><span class="grow"><b>${esc(p.name)}</b><span class="small muted">${p.kind==='particular'?'Particular':'Clínica'}${p.price?' · particular '+money(p.price):''} · ${p.duration||50} min${p.msg?' · mensagem própria':''}</span></span><span class="chev">›</span></button>`).join('')}</div>
     <button class="btn soft block" id="addPlace">+ Adicionar clínica ou local</button></div>
   <div class="section"><div class="label">Convênios</div>
     <div class="small muted">Cadastre quanto você recebe por sessão em cada convênio. Se o valor muda de uma clínica para outra, informe por local.</div>
     ${S.insurers.length?`<div class="rows">${S.insurers.map(i=>{const diff=S.places.filter(p=>i.prices&&i.prices[p.id]!==undefined&&i.prices[p.id]!=='');return `<button class="row" data-ins="${i.id}"><span class="avatar" style="width:34px;height:34px;font-size:13px">${esc(initials(i.name))}</span><span class="grow"><b>${esc(i.name)}</b><span class="small muted num">${money(i.price)} por sessão${diff.length?` · ${diff.length} local(is) com valor próprio`:''}</span></span><span class="chev">›</span></button>`}).join('')}</div>`:'<div class="empty"><b>Nenhum convênio ainda</b>Adicione os convênios que você atende, como CIMED ou Unimed.</div>'}
     <button class="btn soft block" id="addIns">+ Adicionar convênio</button></div>
-  <div class="section"><div class="label">Seu perfil</div><div class="card" style="display:flex;flex-direction:column;gap:12px">
-    <label class="field"><span>Nome</span><input class="input" id="sName" value="${esc(S.profile.name)}"></label>
-    <label class="field"><span>Profissão</span><input class="input" id="sTitle" value="${esc(S.profile.title||'')}"></label></div></div>
-  <div class="section"><div class="label">Mensagem geral de confirmação</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
+  <div class="section" style="margin-bottom:10px"><div class="label">Mensagem geral de confirmação</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
     <textarea class="input" id="sMsg">${esc(S.settings.msg||DEFAULT_MSG)}</textarea>
     <div class="small muted">Usada nos locais sem mensagem própria. Cada clínica ou o particular pode ter a sua: toque no local acima. Use {paciente}, {dia}, {hora}, {local}, {endereco}, {info} e {profissional}.</div>
-    <button class="link" id="resetMsg">Voltar ao texto padrão</button></div></div>
-  <div class="section"><div class="label">Cópia de segurança</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
-    <b>${backupLabel()}</b>
-    <div class="small muted">Seus dados, inclusive prontuários, ficam guardados só neste aparelho${AUTH?' e sincronizados na nuvem':''}. O app avisa na agenda quando passar 7 dias sem cópia. Salve no iCloud Drive ou no Google Drive e guarde em local seguro, pois o arquivo contém dados de saúde dos pacientes.</div>
-    <div class="btnrow"><button class="btn primary" id="exp">Salvar cópia agora</button><label class="btn ghost" for="imp" style="cursor:pointer">Restaurar cópia</label></div>
-    <input type="file" id="imp" accept="application/json,.json" hidden></div></div>
-  ${AUTH?`<div class="section"><div class="label">Sincronização na nuvem</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
-    <div class="small muted">Conectado como <b>${esc(AUTH.email)}</b>. Suas alterações sincronizam automaticamente entre aparelhos.</div>
-    <button class="btn ghost block" id="syncNow">Sincronizar agora</button>
-    <button class="btn danger block" id="logout">Sair da conta</button>
-  </div></div>`:''}
-  <div class="section"><div class="card small muted">Para usar como app no iPhone: abra no Safari, toque em Compartilhar e depois em <b>Adicionar à Tela de Início</b>.</div></div>
-  <div class="section" style="margin-bottom:10px"><button class="btn danger block" id="wipe">Apagar todos os dados deste aparelho</button></div>`;
-  $('#sName').onchange=e=>{S.profile.name=e.target.value.trim()||S.profile.name;save();toast('Nome salvo')};
-  $('#sTitle').onchange=e=>{S.profile.title=e.target.value.trim();save();toast('Profissão salva')};
-  $('#sMsg').onchange=e=>{S.settings.msg=e.target.value;save();toast('Mensagem salva')};
-  $('#resetMsg').onclick=()=>{S.settings.msg=DEFAULT_MSG;save();render();toast('Texto padrão restaurado')};
+    <button class="link" id="resetMsg">Voltar ao texto padrão</button></div></div>`;
   app.querySelectorAll('[data-pl]').forEach(b=>b.onclick=()=>editPlace(b.dataset.pl));
   app.querySelectorAll('[data-ins]').forEach(b=>b.onclick=()=>editInsurer(b.dataset.ins));
   $('#addPlace').onclick=()=>editPlace(null);
   $('#addIns').onclick=()=>editInsurer(null);
-  if($('#clearDemo'))$('#clearDemo').onclick=()=>{S=null;try{localStorage.removeItem(KEY)}catch(e){}render()};
+  $('#sMsg').onchange=e=>{S.settings.msg=e.target.value;save();toast('Mensagem salva')};
+  $('#resetMsg').onclick=()=>{S.settings.msg=DEFAULT_MSG;save();render();toast('Texto padrão restaurado')};
+}
+
+function renderSetAparencia(body){
+  const cur=S.settings.accent||'rosa';
+  body.innerHTML=`<div class="section" style="margin-bottom:10px"><div class="label">Cor de destaque</div>
+    <div class="small muted">Só muda a cor de destaque do app (botões, links, seleção) — o modo claro/escuro continua seguindo o tema do seu celular.</div>
+    <div class="card"><div class="seg" id="accentPick" style="margin:0">${ACCENTS.map(a=>`<button data-v="${a.key}" style="display:flex;align-items:center;gap:8px"><span class="swatch" style="background:${accentPreview(a.key)}"></span>${a.name}</button>`).join('')}</div></div>
+  </div>`;
+  segSelect($('#accentPick'),cur);
+  $('#accentPick').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.settings.accent=b.dataset.v;save();applyAccent();render();toast('Cor atualizada')});
+}
+
+function renderSetSeguranca(body){
+  if(!AUTH){
+    body.innerHTML=`<div class="section"><div class="empty"><b>Sem conta na nuvem</b>Você está usando o app sem sincronização. Crie uma conta para trocar de aparelho sem perder dados.</div></div>`;
+    return;
+  }
+  body.innerHTML=`<div class="section"><div class="label">Sincronização na nuvem</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <div class="small muted">Conectado como <b>${esc(AUTH.email)}</b>. Suas alterações sincronizam automaticamente entre aparelhos.</div>
+    <button class="btn ghost block" id="syncNow">Sincronizar agora</button>
+  </div></div>
+  <div class="section"><div class="label">Trocar senha</div><div class="card" style="display:flex;flex-direction:column;gap:12px">
+    <label class="field"><span>Senha atual</span><input class="input" id="pwCurrent" type="password" autocomplete="current-password"></label>
+    <label class="field"><span>Nova senha</span><input class="input" id="pwNew" type="password" placeholder="Pelo menos 6 caracteres" autocomplete="new-password"></label>
+    <button class="btn primary block" id="pwSave">Salvar nova senha</button>
+  </div></div>
+  <div class="section" style="margin-bottom:10px"><button class="btn danger block" id="logout">Sair da conta</button></div>`;
+  $('#syncNow').onclick=async()=>{toast('Sincronizando…');try{await pushAll();toast('Sincronizado')}catch(e){toast('Não consegui sincronizar agora')}};
+  $('#pwSave').onclick=async()=>{
+    const cur=$('#pwCurrent').value,nw=$('#pwNew').value;
+    if(!cur||!nw){toast('Preencha os dois campos');return}
+    if(nw.trim().length<6){toast('A nova senha precisa ter 6 caracteres ou mais');return}
+    const btn=$('#pwSave');btn.disabled=true;
+    try{await apiFetch('/auth/me?action=password',{method:'PUT',body:JSON.stringify({currentPassword:cur,newPassword:nw})});$('#pwCurrent').value='';$('#pwNew').value='';toast('Senha alterada')}
+    catch(e){toast(e.message==='wrong_password'?'Senha atual incorreta':'Não consegui trocar a senha agora')}
+    btn.disabled=false;
+  };
+  twoTap($('#logout'),'Sair da conta','Toque de novo para sair',()=>{clearAuth();render();toast('Você saiu da conta. Os dados continuam neste aparelho.')});
+}
+
+function renderSetDados(body){
+  body.innerHTML=`<div class="section"><div class="label">Cópia de segurança</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <b>${backupLabel()}</b>
+    <div class="small muted">Seus dados, inclusive prontuários, ficam guardados só neste aparelho${AUTH?' e sincronizados na nuvem':''}. O app avisa na agenda quando passar 7 dias sem cópia. Salve no iCloud Drive ou no Google Drive e guarde em local seguro, pois o arquivo contém dados de saúde dos pacientes.</div>
+    <div class="btnrow"><button class="btn primary" id="exp">Salvar cópia agora</button><label class="btn ghost" for="imp" style="cursor:pointer">Restaurar cópia</label></div>
+    <input type="file" id="imp" accept="application/json,.json" hidden></div></div>
+  <div class="section"><div class="card small muted">Para usar como app no iPhone: abra no Safari, toque em Compartilhar e depois em <b>Adicionar à Tela de Início</b>.</div></div>
+  <div class="section" style="margin-bottom:10px"><button class="btn danger block" id="wipe">Apagar todos os dados deste aparelho</button></div>`;
   $('#exp').onclick=backupSheet;
   $('#imp').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!d.places||!d.appts)throw 0;S=d;migrate();save();render();toast('Agenda restaurada')}catch(err){toast('Esse arquivo não é uma cópia da agenda')}};r.readAsText(f)};
   twoTap($('#wipe'),'Apagar todos os dados deste aparelho','Tem certeza? Toque de novo para apagar tudo',()=>{S=null;try{localStorage.removeItem(KEY)}catch(e){}render()});
-  if(AUTH){
-    $('#syncNow').onclick=async()=>{toast('Sincronizando…');try{await pushAll();toast('Sincronizado')}catch(e){toast('Não consegui sincronizar agora')}};
-    twoTap($('#logout'),'Sair da conta','Toque de novo para sair',()=>{clearAuth();render();toast('Você saiu da conta. Os dados continuam neste aparelho.')});
-  }
 }
 
 function editInsurer(id){

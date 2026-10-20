@@ -107,3 +107,13 @@ create table if not exists exceptions (
   note text default ''
 );
 create index if not exists exceptions_user_id_idx on exceptions(user_id);
+
+-- Cópia de segurança automática de todo o banco (ver api/cron/backup.ts), guardada
+-- na própria base. Mantém só as últimas N linhas (o endpoint faz a limpeza), então
+-- o espaço ocupado fica sempre pequeno e previsível.
+create table if not exists backups (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  data jsonb not null
+);
+create index if not exists backups_created_at_idx on backups(created_at desc);
