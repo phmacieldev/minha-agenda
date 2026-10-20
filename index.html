@@ -436,7 +436,7 @@ function scheduleSync(){
   syncTimer=setTimeout(pushAll,900);
 }
 
-const ui={tab:'agenda',sel:todayISO(),week:iso(startOfWeek(new Date())),q:'',rep:{mode:'mes',anchor:todayISO()},showList:false};
+const ui={tab:'agenda',sel:todayISO(),week:iso(startOfWeek(new Date())),q:'',rep:{mode:'mes',anchor:todayISO(),q:'',shown:{},placeTab:null},showList:false};
 
 const place=id=>S.places.find(p=>p.id===id);
 const patient=id=>S.patients.find(p=>p.id===id);
@@ -1087,6 +1087,11 @@ function editException(id,type){
 /* ---------- relatórios ---------- */
 function period(){
   const a=parse(ui.rep.anchor);
+  if(ui.rep.mode==='dia'){
+    const lbl=`${cap(WDL[a.getDay()])}, ${a.getDate()} de ${MES[a.getMonth()]} de ${a.getFullYear()}`;
+    const short=`${pad(a.getDate())}/${pad(a.getMonth()+1)}`;
+    return{start:iso(a),end:iso(a),label:lbl,short,file:'dia-'+iso(a)};
+  }
   if(ui.rep.mode==='semana'){const s=startOfWeek(a),e=addDays(s,6);
     const lbl=s.getMonth()===e.getMonth()?`${s.getDate()} a ${e.getDate()} de ${MES[e.getMonth()]}`:`${s.getDate()}/${pad(s.getMonth()+1)} a ${e.getDate()}/${pad(e.getMonth()+1)}`;
     return{start:iso(s),end:iso(e),label:'Semana de '+lbl,short:lbl,file:'semana-'+iso(s)}}
@@ -1110,12 +1115,38 @@ function reportData(){
     total:sum(done),paid:sum(done.filter(a=>a.paid)),pend:sum(done.filter(a=>!a.paid)),forecast:sum(sched),places,byPay};
 }
 function groupDet(g){return g.prices.length===1?`${g.list.length} × ${money(g.prices[0])}`:`${g.list.length} atendimentos`}
+function miniApptRow(a){
+  const p=patient(a.patientId);
+  return `<div class="row" data-miniappt="${a.id}" style="padding:9px 0;cursor:pointer"><span class="grow"><b class="small">${esc(p?.name||'Paciente')}</b><span class="small muted num">${fmtDate(a.date)} · ${money(a.price)}</span></span>${a.paid?'<span class="pill st-concluido">recebido</span>':`<button class="mini" data-markone="${a.id}">Marcar</button>`}</div>`;
+}
+function placeConferCard(x){
+  return `<div class="card" style="display:flex;flex-direction:column;gap:12px">
+    <div class="ptotal"><span style="display:flex;align-items:center;gap:8px;min-width:0"><span class="swatch" style="background:${cv(x.p.color)}"></span><b>${esc(x.p.name)}</b></span><b class="num">${money(x.total)}</b></div>
+    <div class="small muted num">${x.list.length} atendidos · recebido ${money(x.paid)} · a receber ${money(x.pend)}${x.sched.length?` · ${x.sched.length} ainda agendados`:''}</div>
+    <button class="mini" data-crep="${x.p.id}" style="align-self:flex-start">Relatório de pacientes para a clínica</button>
+    ${x.groups.map(g=>{
+      const shownKey=x.p.id+'|'+g.key;
+      const shownCount=ui.rep.shown[shownKey]||10;
+      const visible=g.list.slice(0,shownCount);
+      return `<div class="grp">
+        <div class="gline"><span class="nm"><span class="pay ${g.key==='particular'?'':'conv'}">${esc(g.name)}</span></span><span class="tot">${money(g.total)}</span><span class="det">${groupDet(g)}</span><span class="stt" style="color:${g.pend?'var(--warn)':'var(--ok)'}">${g.pend?'falta '+money(g.pend):'tudo recebido'}</span></div>
+        ${g.pend?`<button class="mini" data-mark="${x.p.id}|${g.key}">Marcar ${money(g.pend)} como recebido</button>`:''}
+        <div style="display:flex;flex-direction:column">${visible.map(miniApptRow).join('')}</div>
+        ${g.list.length>shownCount?`<button class="link" data-more="${shownKey}">Ver mais ${Math.min(10,g.list.length-shownCount)}</button>`:''}
+      </div>`;
+    }).join('')||'<div class="small muted">Nenhum atendimento concluído ainda neste período.</div>'}
+  </div>`;
+}
 function renderReports(){
   const R=reportData();const maxPay=Math.max(1,...R.byPay.map(x=>x.total));
   const sortedList=[...R.inP].sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+  const q=ui.rep.q.trim().toLowerCase();
+  const filteredList=q?sortedList.filter(a=>(patient(a.patientId)?.name||'').toLowerCase().includes(q)):sortedList;
+  if(!R.places.find(x=>x.p.id===ui.rep.placeTab))ui.rep.placeTab=R.places[0]?.p.id||null;
+  const activePlace=R.places.find(x=>x.p.id===ui.rep.placeTab);
   app.innerHTML=`<div class="top"><div><h1>Relatórios</h1><div class="sub">${R.pr.label}</div></div>
-    <div style="display:flex;gap:6px"><button class="iconbtn" id="rPrev" aria-label="Período anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg></button><button class="iconbtn" id="rNext" aria-label="Próximo período"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg></button></div></div>
-  <div class="seg solid" id="rMode" style="margin-bottom:14px"><button data-v="semana">Semanal</button><button data-v="mes">Mensal</button></div>
+    <div style="display:flex;gap:6px;align-items:center"><input type="date" class="input num" id="rJump" value="${ui.rep.anchor}" style="min-height:40px;padding:6px 8px;font-size:13px;max-width:140px"><button class="iconbtn" id="rPrev" aria-label="Período anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg></button><button class="iconbtn" id="rNext" aria-label="Próximo período"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg></button></div></div>
+  <div class="seg solid" id="rMode" style="margin-bottom:14px"><button data-v="dia">Diária</button><button data-v="semana">Semanal</button><button data-v="mes">Mensal</button></div>
   <div class="stats three">
     <div class="stat"><div class="label">Atendidos</div><div class="v">${R.done.length}</div></div>
     <div class="stat"><div class="label">Faltas</div><div class="v">${R.missed.length}</div></div>
@@ -1129,35 +1160,36 @@ function renderReports(){
   </div>
   <div class="btnrow" style="margin-top:10px"><button class="btn soft" id="rCopy">Copiar relatório</button><button class="btn ghost" id="rCsv">Exportar planilha</button></div>
 
-  <div class="section"><div class="label">Conferência por local</div>
-    <div class="small muted">Compare com o que cada clínica pagar. Ao receber, toque em "Marcar recebido" no grupo.</div>
-    ${R.places.length?R.places.map(x=>`<div class="card" style="display:flex;flex-direction:column;gap:12px">
-      <div class="ptotal"><span style="display:flex;align-items:center;gap:8px;min-width:0"><span class="swatch" style="background:${cv(x.p.color)}"></span><b>${esc(x.p.name)}</b></span><b class="num">${money(x.total)}</b></div>
-      <div class="small muted num">${x.list.length} atendidos · recebido ${money(x.paid)} · a receber ${money(x.pend)}${x.sched.length?` · ${x.sched.length} ainda agendados`:''}</div>
-      <button class="mini" data-crep="${x.p.id}" style="align-self:flex-start">Relatório de pacientes para a clínica</button>
-      ${x.groups.map(g=>`<div class="grp"><div class="gline"><span class="nm"><span class="pay ${g.key==='particular'?'':'conv'}">${esc(g.name)}</span></span><span class="tot">${money(g.total)}</span><span class="det">${groupDet(g)}</span><span class="stt" style="color:${g.pend?'var(--warn)':'var(--ok)'}">${g.pend?'falta '+money(g.pend):'tudo recebido'}</span></div>
-        ${g.pend?`<button class="mini" data-mark="${x.p.id}|${g.key}">Marcar ${money(g.pend)} como recebido</button>`:''}</div>`).join('')||'<div class="small muted">Nenhum atendimento concluído ainda neste período.</div>'}
-    </div>`).join(''):'<div class="empty"><b>Sem atendimentos neste período</b>Os números aparecem quando você marca atendimentos como atendidos.</div>'}
-  </div>
-
   ${R.byPay.length?`<div class="section"><div class="label">Por convênio e particular</div><div class="card" style="display:flex;flex-direction:column;gap:14px">
     ${R.byPay.map(g=>`<div style="--pc:var(--accent)"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(g.name)}</b><span class="num small">${g.n} · ${money(g.total)}</span></div><div class="bar"><i style="width:${g.total/maxPay*100}%"></i></div>${g.pend?`<div class="small num" style="color:var(--warn);margin-top:4px">a receber ${money(g.pend)}</div>`:''}</div>`).join('')}
   </div></div>`:''}
 
+  <div class="section"><div class="label">Conferência por local</div>
+    <div class="small muted">Compare com o que cada clínica pagar. Ao receber, toque em "Marcar".</div>
+    ${R.places.length?`<div class="seg solid" id="rPlaceTabs" style="margin-bottom:10px">${R.places.map(x=>`<button data-v="${x.p.id}">${esc(x.p.name)}</button>`).join('')}</div>${activePlace?placeConferCard(activePlace):''}`:'<div class="empty"><b>Sem atendimentos neste período</b>Os números aparecem quando você marca atendimentos como atendidos.</div>'}
+  </div>
+
   <div class="section"><button class="btn ghost block" id="rList">${ui.showList?'Esconder':'Ver'} lista de atendimentos (${sortedList.length})</button>
-  ${ui.showList?`<div class="scrollx"><table class="tbl"><thead><tr><th>Data</th><th>Paciente</th><th>Local</th><th>Pagamento</th><th class="r">Valor</th><th>Situação</th></tr></thead><tbody>
-    ${sortedList.map(a=>`<tr data-a="${a.id}"><td>${fmtDate(a.date)} ${a.time}</td><td>${esc(patient(a.patientId)?.name||'')}</td><td>${esc(place(a.placeId)?.name||'')}</td><td>${esc(payName(a))}</td><td class="r">${money(a.price)}</td><td>${STATUS[a.status]}${a.status==='concluido'?(a.paid?' · recebido':' · a receber'):''}</td></tr>`).join('')}
-  </tbody></table></div>`:''}</div>`;
+  ${ui.showList?`<input class="search" id="rSearch" type="search" placeholder="Buscar atendimento por paciente" value="${esc(ui.rep.q)}" style="margin:10px 0">
+  <div class="scrollx"><table class="tbl"><thead><tr><th>Data</th><th>Paciente</th><th>Local</th><th>Pagamento</th><th class="r">Valor</th><th>Situação</th></tr></thead><tbody>
+    ${filteredList.map(a=>`<tr data-a="${a.id}"><td>${fmtDate(a.date)} ${a.time}</td><td>${esc(patient(a.patientId)?.name||'')}</td><td>${esc(place(a.placeId)?.name||'')}</td><td>${esc(payName(a))}</td><td class="r">${money(a.price)}</td><td>${STATUS[a.status]}${a.status==='concluido'?(a.paid?' · recebido':' · a receber'):''}</td></tr>`).join('')}
+  </tbody></table>${!filteredList.length?'<div class="small muted" style="padding:10px 14px">Nenhum atendimento encontrado.</div>':''}</div>`:''}</div>`;
   segSelect($('#rMode'),ui.rep.mode);
   $('#rMode').querySelectorAll('button').forEach(b=>b.onclick=()=>{ui.rep.mode=b.dataset.v;render()});
-  const shift=k=>{const a=parse(ui.rep.anchor);ui.rep.anchor=iso(ui.rep.mode==='semana'?addDays(a,7*k):new Date(a.getFullYear(),a.getMonth()+k,1));render()};
+  const shift=k=>{const a=parse(ui.rep.anchor);ui.rep.anchor=iso(ui.rep.mode==='semana'?addDays(a,7*k):ui.rep.mode==='dia'?addDays(a,k):new Date(a.getFullYear(),a.getMonth()+k,1));render()};
   $('#rPrev').onclick=()=>shift(-1);$('#rNext').onclick=()=>shift(1);
+  $('#rJump').onchange=e=>{if(e.target.value){ui.rep.anchor=e.target.value;render()}};
   $('#rList').onclick=()=>{ui.showList=!ui.showList;render()};
   $('#rCopy').onclick=()=>openSheet('Relatório em texto',`<pre class="share" id="rTxt"></pre><button class="btn primary block" id="rTxtCopy">Copiar texto</button>`,b=>{b.querySelector('#rTxt').textContent=reportText(R);b.querySelector('#rTxtCopy').onclick=()=>copy(reportText(R))});
   $('#rCsv').onclick=()=>saveFile(`atendimentos-${R.pr.file}.csv`,reportCsv(R),'text/csv;charset=utf-8');
+  if($('#rSearch'))$('#rSearch').oninput=()=>{ui.rep.q=$('#rSearch').value;const pos=$('#rSearch').selectionStart;renderReports();const n=$('#rSearch');n.focus();n.setSelectionRange(pos,pos)};
+  if($('#rPlaceTabs')){segSelect($('#rPlaceTabs'),ui.rep.placeTab);$('#rPlaceTabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{ui.rep.placeTab=b.dataset.v;renderReports()})}
   app.querySelectorAll('[data-mark]').forEach(btn=>{const[pid,key]=btn.dataset.mark.split('|');const lbl=btn.textContent;
     twoTap(btn,lbl,'Toque de novo para confirmar',()=>{let n=0;R.done.forEach(a=>{if(a.placeId===pid&&payKey(a)===key&&!a.paid){a.paid=true;n++}});save();render();toast(`${n} atendimento(s) marcados como recebidos`)})});
+  app.querySelectorAll('[data-markone]').forEach(btn=>btn.onclick=e=>{e.stopPropagation();const a=S.appts.find(x=>x.id===btn.dataset.markone);if(a){a.paid=true;save();render();toast('Marcado como recebido')}});
+  app.querySelectorAll('[data-more]').forEach(btn=>btn.onclick=()=>{ui.rep.shown[btn.dataset.more]=(ui.rep.shown[btn.dataset.more]||10)+10;renderReports()});
   app.querySelectorAll('tr[data-a]').forEach(r=>r.onclick=()=>viewAppt(r.dataset.a));
+  app.querySelectorAll('[data-miniappt]').forEach(r=>r.onclick=()=>viewAppt(r.dataset.miniappt));
   app.querySelectorAll('[data-crep]').forEach(btn=>btn.onclick=()=>{const c=clinicReport(btn.dataset.crep,R);
     openSheet('Pacientes · '+place(btn.dataset.crep).name,`<div class="small muted">${R.pr.label}. ${c.count} paciente(s) com sessões ou faltas neste local.</div><pre class="share" id="cTxt"></pre><div class="btnrow"><button class="btn primary" id="cCopy">Copiar texto</button><button class="btn ghost" id="cPrint">Imprimir ou PDF</button></div>`,b=>{
       b.querySelector('#cTxt').textContent=c.text;b.querySelector('#cCopy').onclick=()=>copy(c.text);b.querySelector('#cPrint').onclick=()=>printDoc('Relatório de pacientes – '+place(btn.dataset.crep).name,c.html)})});
