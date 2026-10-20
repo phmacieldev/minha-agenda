@@ -1384,7 +1384,11 @@ function renderSetSeguranca(body){
     catch(e){toast(e.message==='wrong_password'?'Senha atual incorreta':'Não consegui trocar a senha agora')}
     btn.disabled=false;
   };
-  twoTap($('#logout'),'Sair da conta','Toque de novo para sair',()=>{clearAuth();render();toast('Você saiu da conta. Os dados continuam neste aparelho.')});
+  twoTap($('#logout'),'Sair da conta','Toque de novo para sair',()=>{
+    clearAuth();
+    try{localStorage.removeItem(KEY)}catch(e){}
+    location.reload();
+  });
 }
 
 function renderSetDados(body){
