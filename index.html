@@ -119,6 +119,12 @@ h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.
 .bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:8px}
 .bar i{display:block;height:100%;border-radius:99px;background:var(--pc)}
 
+/* Demo bar */
+.demobar{position:fixed;top:0;left:0;right:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--accent);color:var(--accent-ink);box-shadow:var(--shadow);padding:10px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));padding-top:calc(env(safe-area-inset-top,0px) + 10px)}
+.demobar span{font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.demobar button{border:0;border-radius:999px;padding:8px 14px;font-weight:700;font-size:13px;flex:none;background:var(--accent-ink);color:var(--accent)}
+body.has-demobar .wrap{padding-top:calc(env(safe-area-inset-top,0px) + 58px)}
+
 /* Tab bar */
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 .tabs .in{max-width:640px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
@@ -260,6 +266,7 @@ pre.share{white-space:pre-wrap;background:var(--surface);border:1px solid var(--
 </style>
 </head>
 <body>
+<div class="demobar" id="demoBar" hidden><span>Você está vendo um exemplo</span><button id="demoCreate">Criar minha conta</button></div>
 <div class="wrap" id="app"></div>
 
 <nav class="tabs" id="tabs" hidden>
@@ -627,7 +634,9 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>go(b.dataset.tab));
 $('#fab').onclick=()=>{if(ui.tab==='horarios')editException(null);else editAppt(null,{date:ui.sel})};
 
 function render(){
-  if(!S){onboarding();return}
+  if(!S){$('#demoBar').hidden=true;document.body.classList.remove('has-demobar');onboarding();return}
+  const demoBar=$('#demoBar');demoBar.hidden=!S.demo;document.body.classList.toggle('has-demobar',!!S.demo);
+  demoBar.querySelector('#demoCreate').onclick=()=>{S=null;try{localStorage.removeItem(KEY)}catch(e){}render()};
   $('#tabs').hidden=false;
   document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on',b.dataset.tab===ui.tab));
   $('#fab').hidden=!['agenda','pacientes','horarios'].includes(ui.tab);
