@@ -6,7 +6,7 @@ import { signToken } from '../../lib/auth';
 
 const schema = z.object({
   email: z.string().email(),
-  password: z.string().min(8, 'Senha precisa ter pelo menos 8 caracteres'),
+  password: z.string().trim().min(6, 'Senha precisa ter pelo menos 6 caracteres'),
   name: z.string().min(1),
   title: z.string().optional(),
 });

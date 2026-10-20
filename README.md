@@ -36,7 +36,8 @@ npm test
 - `icon-180/192/512.png` — ícones do app
 - `api/` — backend em TypeScript (Vercel serverless functions), ver abaixo
 - `lib/` — código compartilhado do backend (conexão com o banco, autenticação)
-- `supabase/schema.sql` — schema do Postgres
+- `supabase/schema.sql` — schema do Postgres (usado tanto pelo Docker local quanto pelo Supabase de produção)
+- `docker-compose.yml` — Postgres local para desenvolvimento (`npm run db:up`)
 
 ## Dados (hoje)
 
@@ -46,15 +47,32 @@ Tudo fica salvo no `localStorage` do navegador, na chave `minha-agenda-v1` — n
 
 API em TypeScript rodando como Vercel Serverless Functions, usando o Supabase só como Postgres gerenciado (sem Supabase Auth/RLS — autenticação e isolamento por usuária são feitos pela própria API).
 
-**Configuração local:**
+### Ambientes: local × produção (nunca se misturam)
+
+| | Local (desenvolvimento) | Produção |
+|---|---|---|
+| Banco | Postgres no Docker, só na sua máquina | Supabase (nuvem) |
+| Variáveis | `.env` (não commitado) | Vercel → Settings → Environment Variables |
+| Dados | só os seus testes | dados reais das usuárias |
+
+O banco local e o de produção **não têm nenhuma comunicação entre si**. Rodar `vercel dev` na sua máquina nunca deve tocar no banco de produção — se `DATABASE_URL` estiver apontando pro Supabase, está configurado errado. A conexão escolhe SSL automaticamente pelo host (desligado para `localhost`, ligado para qualquer outro) — não precisa mexer nisso.
+
+**Configuração local (uma vez):**
+
+1. Tenha o [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalado e aberto.
+2. Copie `.env.example` para `.env` (os valores padrão já apontam para o banco local — não precisa editar nada pra começar). Essa versão do `vercel dev` lê `.env`, não `.env.local` (o `.vercel link` pode criar um `.env.local` sozinho; se isso acontecer, confira se ele também aponta pro banco local e não para o Supabase).
+3. `npm install`
+4. `npm run dev:api` — um script (`scripts/dev.js`) sobe o Postgres local no Docker automaticamente (esperando ficar saudável), aplica `supabase/schema.sql` sozinho na primeira vez (volume vazio), e só depois inicia a API via `vercel dev`. Ao encerrar (Ctrl+C), o container é parado também.
+5. `npm run typecheck` — confere os tipos sem gerar build.
+
+Se mudar o schema (`supabase/schema.sql`) depois de já ter subido o banco uma vez, rode `npm run db:reset` para recriar o volume do zero com o schema novo (isso apaga os dados locais de teste — é só o banco de desenvolvimento).
+
+**Configuração de produção (feita uma vez, pelo quem administra o projeto):**
 
 1. Crie um projeto no [supabase.com](https://supabase.com) (free tier, região São Paulo — `sa-east-1`).
 2. Em *SQL Editor*, rode o conteúdo de `supabase/schema.sql`.
 3. Em *Project Settings → Database → Connection string*, copie a opção **Transaction pooler** (não a "URI" direta — ela só resolve por IPv6 e a Vercel não tem saída IPv6, dá `ENOTFOUND`).
-4. Copie `.env.example` para `.env.local` e preencha `DATABASE_URL` (com a senha do banco) e `JWT_SECRET` (qualquer string longa aleatória). Cadastre as duas também em Vercel → Settings → Environment Variables (Production, Preview e Development).
-5. `npm install`
-6. `npm run dev:api` — sobe a API localmente via `vercel dev`.
-7. `npm run typecheck` — confere os tipos sem gerar build.
+4. Cadastre `DATABASE_URL` (com a senha do banco) e `JWT_SECRET` (uma string longa aleatória, diferente da usada em local) em Vercel → Settings → Environment Variables → **Production** (e Preview, se quiser deploys de preview funcionais). Nunca cole esses valores em nenhum arquivo do repositório.
 
 **Endpoints prontos até agora** (todos sob `/api`; os de CRUD usam `?id=` em vez de segmento de rota, porque o plano Hobby da Vercel limita a 12 Serverless Functions por deployment — um `index.ts` por recurso cuida de lista/criação/leitura/atualização/exclusão em vez de dois arquivos por recurso):
 
