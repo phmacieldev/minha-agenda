@@ -558,6 +558,16 @@ function openSheet(title,html,mount){
 }
 function closeSheet(){sheet.classList.remove('show');scrim.classList.remove('show');setTimeout(()=>{sheet.hidden=true;scrim.hidden=true;$('#sheetBody').innerHTML=''},250)}
 $('#sheetClose').onclick=closeSheet;scrim.onclick=closeSheet;
+// Enter num <input> dentro de um bloco marcado com data-enter="#idDoBotão" age
+// como "enviar" (não tem <form> aqui, então o navegador não faz isso sozinho).
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Enter'||e.target.tagName!=='INPUT')return;
+  const scope=e.target.closest('[data-enter]');
+  if(!scope)return;
+  const btn=document.querySelector(scope.dataset.enter);
+  if(!btn||btn.disabled)return;
+  e.preventDefault();btn.click();
+});
 function twoTap(btn,label,armedLabel,fn,ms=3200){let armed=false;btn.onclick=()=>{if(!armed){armed=true;btn.textContent=armedLabel;setTimeout(()=>{armed=false;btn.textContent=label},ms);return}fn()}}
 function segSelect(container,val){container.querySelectorAll('button').forEach(x=>x.classList.toggle('sel',x.dataset.v===val))}
 
@@ -600,7 +610,7 @@ function onboarding(){
   let places=[{name:'Clínica 1',color:'p1'},{name:'Clínica 2',color:'p4'},{name:'Particular',color:'p5'}];
   let openCol=-1,obName='',obTitle='',obEmail='',obPassword='',mode='signup';
   const draw=()=>{
-    app.innerHTML=`<div class="ob">
+    app.innerHTML=`<div class="ob" data-enter="${mode==='signup'?'#obGo':'#liGo'}">
       <div class="hero"><div class="mark"><svg class="logo" viewBox="0 0 1024 1024" aria-hidden="true"><defs><linearGradient id="lgBg" x1="0" y1="0" x2="0.55" y2="1"><stop offset="0" stop-color="#FF8FB6"/><stop offset="1" stop-color="#D6337A"/></linearGradient></defs><rect width="1024" height="1024" rx="228" fill="url(#lgBg)"/><rect x="196" y="236" width="632" height="464" rx="150" fill="#fff"/><path d="M330 640 L300 812 L470 690 Z" fill="#fff"/><g fill="#D6337A"><rect x="256" y="423" width="44" height="90" rx="22"/><rect x="334" y="383" width="44" height="170" rx="22"/><rect x="412" y="338" width="44" height="260" rx="22"/><rect x="490" y="383" width="44" height="170" rx="22"/><rect x="568" y="318" width="44" height="300" rx="22"/><rect x="646" y="368" width="44" height="200" rx="22"/><rect x="724" y="413" width="44" height="110" rx="22"/></g><circle cx="760" cy="760" r="132" fill="#fff"/><circle cx="760" cy="760" r="110" fill="#FFECF4"/><path d="M702 762 L746 806 L822 720" fill="none" stroke="#D6337A" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <h1>Sua agenda de atendimentos, num lugar só</h1>
       <p class="muted" style="margin:0">Clínicas, convênios e particular juntos, horários livres à vista, confirmação pelo WhatsApp e relatório para conferir os repasses.</p></div>
@@ -1367,7 +1377,7 @@ function renderSetSeguranca(body){
     <div class="small muted">Conectado como <b>${esc(AUTH.email)}</b>. Suas alterações sincronizam automaticamente entre aparelhos.</div>
     <button class="btn ghost block" id="syncNow">Sincronizar agora</button>
   </div></div>
-  <div class="section"><div class="label">Trocar senha</div><div class="card" style="display:flex;flex-direction:column;gap:12px">
+  <div class="section"><div class="label">Trocar senha</div><div class="card" data-enter="#pwSave" style="display:flex;flex-direction:column;gap:12px">
     ${pwField('pwCurrent','Senha atual',{autocomplete:'current-password'})}
     ${pwField('pwNew','Nova senha',{placeholder:'Pelo menos 6 caracteres',autocomplete:'new-password'})}
     <button class="btn primary block" id="pwSave">Salvar nova senha</button>
