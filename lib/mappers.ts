@@ -54,6 +54,17 @@ export function exceptionToJson(row: any) {
   };
 }
 
+export function recordToJson(row: any) {
+  return {
+    id: row.id,
+    patientId: row.patient_id,
+    date: row.date,
+    placeId: row.place_id,
+    apptId: row.appt_id,
+    text: row.text,
+  };
+}
+
 export function apptToJson(row: any) {
   return {
     id: row.id,

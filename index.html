@@ -294,7 +294,7 @@ const DEFAULT_MSG='Olá, {paciente}! Passando para confirmar seu atendimento {di
 const $=s=>document.querySelector(s);
 const app=$('#app');
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
+const uid=()=>(crypto.randomUUID?crypto.randomUUID():'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==='x'?r:(r&0x3|0x8)).toString(16)}));
 const pad=n=>String(n).padStart(2,'0');
 const iso=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
 const parse=s=>{const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d)};
@@ -349,9 +349,85 @@ function migrate(){
   S.appts.forEach(a=>{if(!a.pay)a.pay='particular'});
 }
 migrate();
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('Não consegui salvar neste aparelho')}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('Não consegui salvar neste aparelho')}scheduleSync()}
 function blankHours(){const h={};for(let i=0;i<7;i++)h[i]=[];return h}
 function newPlace(name,color,kind){return{id:uid(),name,color,kind:kind||'clinica',address:'',price:0,duration:50,hours:blankHours()}}
+
+/* ---------- sincronização com a nuvem ---------- */
+const AUTH_KEY='minha-agenda-auth';
+const SYNC_IDS_KEY='minha-agenda-sync-ids';
+const API_BASE='/api';
+let AUTH=null;
+try{const r=localStorage.getItem(AUTH_KEY);if(r)AUTH=JSON.parse(r)}catch(e){}
+function setAuth(a){AUTH=a;try{localStorage.setItem(AUTH_KEY,JSON.stringify(a))}catch(e){}}
+function clearAuth(){AUTH=null;try{localStorage.removeItem(AUTH_KEY);localStorage.removeItem(SYNC_IDS_KEY)}catch(e){}}
+function getSyncIds(){try{const r=localStorage.getItem(SYNC_IDS_KEY);return r?JSON.parse(r):{}}catch(e){return{}}}
+function setSyncIds(ids){try{localStorage.setItem(SYNC_IDS_KEY,JSON.stringify(ids))}catch(e){}}
+
+async function apiFetch(path,opts){
+  opts=opts||{};
+  const headers=Object.assign({'Content-Type':'application/json'},opts.headers||{});
+  if(AUTH&&AUTH.token)headers.Authorization='Bearer '+AUTH.token;
+  const res=await fetch(API_BASE+path,Object.assign({},opts,{headers}));
+  let body=null;
+  try{body=await res.json()}catch(e){}
+  if(!res.ok){const err=new Error((body&&body.error)||('http_'+res.status));err.status=res.status;err.body=body;throw err}
+  return body;
+}
+async function apiSignup(email,password,name,title){
+  const r=await apiFetch('/auth/signup',{method:'POST',body:JSON.stringify({email,password,name,title})});
+  setAuth({token:r.token,email});
+}
+async function apiLogin(email,password){
+  const r=await apiFetch('/auth/login',{method:'POST',body:JSON.stringify({email,password})});
+  setAuth({token:r.token,email});
+}
+
+const RESOURCE_PATHS={places:'/places',insurers:'/insurers',patients:'/patients',appts:'/appts',exceptions:'/exceptions',records:'/records'};
+const patientForApi=p=>{const r=Object.assign({},p);delete r.records;return r};
+
+async function pullAll(){
+  const[me,places,patientsRaw,insurers,appts,exceptions,records]=await Promise.all([
+    apiFetch('/auth/me'),apiFetch('/places'),apiFetch('/patients'),apiFetch('/insurers'),apiFetch('/appts'),apiFetch('/exceptions'),apiFetch('/records')
+  ]);
+  const byPatient={};
+  records.forEach(r=>{const rec=Object.assign({},r);const pid=rec.patientId;delete rec.patientId;(byPatient[pid]=byPatient[pid]||[]).push(rec)});
+  const patients=patientsRaw.map(p=>Object.assign({},p,{records:byPatient[p.id]||[]}));
+  setSyncIds({places:places.map(x=>x.id),insurers:insurers.map(x=>x.id),patients:patients.map(x=>x.id),appts:appts.map(x=>x.id),exceptions:exceptions.map(x=>x.id),records:records.map(x=>x.id)});
+  const settings=(S&&S.settings)||{msg:DEFAULT_MSG};
+  return{v:2,profile:{name:me.name,title:me.title||''},places,patients,appts,insurers,exceptions,settings};
+}
+
+let syncing=false,syncAgain=false;
+async function pushAll(){
+  if(!AUTH)return;
+  if(syncing){syncAgain=true;return}
+  syncing=true;
+  try{
+    const prevIds=getSyncIds();
+    const curIds={places:[],insurers:[],patients:[],appts:[],exceptions:[],records:[]};
+    for(const p of S.places){await apiFetch('/places',{method:'POST',body:JSON.stringify(p)});curIds.places.push(p.id)}
+    for(const i of S.insurers){await apiFetch('/insurers',{method:'POST',body:JSON.stringify(i)});curIds.insurers.push(i.id)}
+    for(const p of S.patients){
+      await apiFetch('/patients',{method:'POST',body:JSON.stringify(patientForApi(p))});curIds.patients.push(p.id);
+      for(const r of (p.records||[])){await apiFetch('/records',{method:'POST',body:JSON.stringify(Object.assign({},r,{patientId:p.id}))});curIds.records.push(r.id)}
+    }
+    for(const a of S.appts){await apiFetch('/appts',{method:'POST',body:JSON.stringify(a)});curIds.appts.push(a.id)}
+    for(const x of S.exceptions){await apiFetch('/exceptions',{method:'POST',body:JSON.stringify(x)});curIds.exceptions.push(x.id)}
+    for(const key of Object.keys(RESOURCE_PATHS)){
+      const removed=(prevIds[key]||[]).filter(id=>curIds[key].indexOf(id)===-1);
+      for(const id of removed){try{await apiFetch(RESOURCE_PATHS[key]+'?id='+id,{method:'DELETE'})}catch(e){}}
+    }
+    setSyncIds(curIds);
+  }catch(e){console.warn('Sincronização falhou',e)}
+  finally{syncing=false;if(syncAgain){syncAgain=false;pushAll()}}
+}
+let syncTimer=null;
+function scheduleSync(){
+  if(!AUTH)return;
+  clearTimeout(syncTimer);
+  syncTimer=setTimeout(pushAll,900);
+}
 
 const ui={tab:'agenda',sel:todayISO(),week:iso(startOfWeek(new Date())),q:'',rep:{mode:'mes',anchor:todayISO()},showList:false};
 
@@ -466,8 +542,14 @@ function onboarding(){
         <button class="link" id="obAdd">+ Adicionar outro local</button>
         <span class="small muted" style="font-weight:400">Toque na bolinha colorida para escolher a cor de cada local. Depois você ajusta horários na aba Horários e cadastra os convênios em Ajustes.</span>
       </div>
+      <label class="toggle"><span>Sincronizar na nuvem (entre aparelhos)</span><input type="checkbox" id="obCloud"></label>
+      <div id="obCloudFields" hidden style="display:flex;flex-direction:column;gap:10px">
+        <label class="field"><span>E-mail</span><input class="input" id="obEmail" type="email" placeholder="voce@email.com" autocomplete="email"></label>
+        <label class="field"><span>Senha</span><input class="input" id="obPassword" type="password" placeholder="Pelo menos 8 caracteres" autocomplete="new-password"></label>
+      </div>
       <button class="btn primary block" id="obGo">Começar</button>
       <button class="btn ghost block" id="obDemo">Ver com exemplos primeiro</button>
+      <button class="link" id="obLogin" style="text-align:center">Já tem conta? Entrar</button>
     </div>`;
     $('#obName').value=obName;$('#obTitle').value=obTitle;
     $('#obName').oninput=e=>obName=e.target.value;$('#obTitle').oninput=e=>obTitle=e.target.value;
@@ -477,15 +559,39 @@ function onboarding(){
       colorPicker($('#obPick'),places[openCol].color,c=>{places[openCol].color=c;sw.style.background=cv(c)},()=>{openCol=-1;draw()});}
     app.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{places.splice(+b.dataset.rm,1);openCol=-1;draw()});
     $('#obAdd').onclick=()=>{places.push({name:'',color:COLORS[places.length%6]});openCol=-1;draw();app.querySelector(`[data-pi="${places.length-1}"]`).focus()};
-    $('#obGo').onclick=()=>{
+    $('#obCloud').onchange=e=>{$('#obCloudFields').hidden=!e.target.checked};
+    $('#obGo').onclick=async()=>{
       const name=$('#obName').value.trim();
       if(!name){toast('Escreva seu nome');$('#obName').focus();return}
       const pl=places.filter(p=>p.name.trim()).map(p=>{const x=newPlace(p.name.trim(),p.color,/particular/i.test(p.name)?'particular':'clinica');for(let d=1;d<=5;d++)x.hours[d]=[{s:'08:00',e:'12:00'},{s:'14:00',e:'18:00'}];return x});
       if(!pl.length){toast('Adicione pelo menos um local');return}
+      const cloud=$('#obCloud').checked;
+      const btn=$('#obGo');
+      if(cloud){
+        const email=$('#obEmail').value.trim(),password=$('#obPassword').value;
+        if(!email||!password){toast('Preencha e-mail e senha para sincronizar');return}
+        btn.disabled=true;
+        try{await apiSignup(email,password,name,$('#obTitle').value.trim())}
+        catch(e){btn.disabled=false;toast(e.body&&e.body.error==='email_in_use'?'Esse e-mail já tem conta':'Não consegui criar a conta. Tente de novo.');return}
+      }
       S={v:2,profile:{name,title:$('#obTitle').value.trim()},places:pl,patients:[],appts:[],insurers:[],exceptions:[],settings:{msg:DEFAULT_MSG}};
-      save();go('horarios');toast('Agora ajuste seus dias e horários');
+      save();go('horarios');toast(cloud?'Conta criada! Agora ajuste seus dias e horários':'Agora ajuste seus dias e horários');
     };
     $('#obDemo').onclick=()=>{S=demo();save();go('agenda');toast('Exemplos carregados. Apague em Ajustes quando quiser.')};
+    $('#obLogin').onclick=()=>{
+      openSheet('Entrar',`
+        <label class="field"><span>E-mail</span><input class="input" id="liEmail" type="email" autocomplete="email"></label>
+        <label class="field"><span>Senha</span><input class="input" id="liPassword" type="password" autocomplete="current-password"></label>
+        <button class="btn primary block" id="liGo">Entrar</button>`,b=>{
+        b.querySelector('#liGo').onclick=async()=>{
+          const email=b.querySelector('#liEmail').value.trim(),password=b.querySelector('#liPassword').value;
+          if(!email||!password){toast('Preencha e-mail e senha');return}
+          const lb=b.querySelector('#liGo');lb.disabled=true;
+          try{await apiLogin(email,password);S=await pullAll();save();closeSheet();render();toast('Bem-vinda de volta!')}
+          catch(e){lb.disabled=false;toast('E-mail ou senha incorretos')}
+        };
+      });
+    };
   };
   draw();
 }
@@ -1093,9 +1199,22 @@ function renderSettings(){
     <button class="link" id="resetMsg">Voltar ao texto padrão</button></div></div>
   <div class="section"><div class="label">Cópia de segurança</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
     <b>${backupLabel()}</b>
-    <div class="small muted">Seus dados, inclusive prontuários, ficam guardados só neste aparelho. O app avisa na agenda quando passar 7 dias sem cópia. Salve no iCloud Drive ou no Google Drive e guarde em local seguro, pois o arquivo contém dados de saúde dos pacientes.</div>
+    <div class="small muted">Seus dados, inclusive prontuários, ficam guardados só neste aparelho${AUTH?' e sincronizados na nuvem':''}. O app avisa na agenda quando passar 7 dias sem cópia. Salve no iCloud Drive ou no Google Drive e guarde em local seguro, pois o arquivo contém dados de saúde dos pacientes.</div>
     <div class="btnrow"><button class="btn primary" id="exp">Salvar cópia agora</button><label class="btn ghost" for="imp" style="cursor:pointer">Restaurar cópia</label></div>
     <input type="file" id="imp" accept="application/json,.json" hidden></div></div>
+  <div class="section"><div class="label">Sincronização na nuvem</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
+    ${AUTH?`
+      <div class="small muted">Conectado como <b>${esc(AUTH.email)}</b>. Suas alterações sincronizam automaticamente entre aparelhos.</div>
+      <button class="btn ghost block" id="syncNow">Sincronizar agora</button>
+      <button class="btn danger block" id="logout">Sair da conta</button>
+    `:`
+      <div class="small muted">Crie uma conta para ter seus dados salvos na nuvem e acessá-los de outro aparelho.</div>
+      <label class="field"><span>E-mail</span><input class="input" id="cloudEmail" type="email" autocomplete="email"></label>
+      <label class="field"><span>Senha</span><input class="input" id="cloudPassword" type="password" placeholder="Pelo menos 8 caracteres" autocomplete="new-password"></label>
+      <button class="btn primary block" id="cloudGo">Criar conta e sincronizar</button>
+      <button class="link" id="cloudLoginLink" style="text-align:center">Já tem conta? Entrar</button>
+    `}
+  </div></div>
   <div class="section"><div class="card small muted">Para usar como app no iPhone: abra no Safari, toque em Compartilhar e depois em <b>Adicionar à Tela de Início</b>.</div></div>
   <div class="section" style="margin-bottom:10px"><button class="btn danger block" id="wipe">Apagar todos os dados deste aparelho</button></div>`;
   $('#sName').onchange=e=>{S.profile.name=e.target.value.trim()||S.profile.name;save();toast('Nome salvo')};
@@ -1110,6 +1229,33 @@ function renderSettings(){
   $('#exp').onclick=backupSheet;
   $('#imp').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!d.places||!d.appts)throw 0;S=d;migrate();save();render();toast('Agenda restaurada')}catch(err){toast('Esse arquivo não é uma cópia da agenda')}};r.readAsText(f)};
   twoTap($('#wipe'),'Apagar todos os dados deste aparelho','Tem certeza? Toque de novo para apagar tudo',()=>{S=null;try{localStorage.removeItem(KEY)}catch(e){}render()});
+  if(AUTH){
+    $('#syncNow').onclick=async()=>{toast('Sincronizando…');try{await pushAll();toast('Sincronizado')}catch(e){toast('Não consegui sincronizar agora')}};
+    twoTap($('#logout'),'Sair da conta','Toque de novo para sair',()=>{clearAuth();render();toast('Você saiu da conta. Os dados continuam neste aparelho.')});
+  }else{
+    $('#cloudGo').onclick=async()=>{
+      const email=$('#cloudEmail').value.trim(),password=$('#cloudPassword').value;
+      if(!email||!password){toast('Preencha e-mail e senha');return}
+      const btn=$('#cloudGo');btn.disabled=true;
+      try{await apiSignup(email,password,S.profile.name,S.profile.title);await pushAll();render();toast('Conta criada! Sincronizando seus dados…')}
+      catch(e){btn.disabled=false;toast(e.body&&e.body.error==='email_in_use'?'Esse e-mail já tem conta':'Não consegui criar a conta')}
+    };
+    $('#cloudLoginLink').onclick=()=>{
+      openSheet('Entrar',`
+        <div class="notice">Entrar troca os dados deste aparelho pelos dados salvos na conta.</div>
+        <label class="field"><span>E-mail</span><input class="input" id="liEmail" type="email" autocomplete="email"></label>
+        <label class="field"><span>Senha</span><input class="input" id="liPassword" type="password" autocomplete="current-password"></label>
+        <button class="btn primary block" id="liGo">Entrar</button>`,b=>{
+        b.querySelector('#liGo').onclick=async()=>{
+          const email=b.querySelector('#liEmail').value.trim(),password=b.querySelector('#liPassword').value;
+          if(!email||!password){toast('Preencha e-mail e senha');return}
+          const lb=b.querySelector('#liGo');lb.disabled=true;
+          try{await apiLogin(email,password);S=await pullAll();save();closeSheet();render();toast('Bem-vinda de volta!')}
+          catch(e){lb.disabled=false;toast('E-mail ou senha incorretos')}
+        };
+      });
+    };
+  }
 }
 
 function editInsurer(id){
