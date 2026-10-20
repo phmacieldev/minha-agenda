@@ -50,17 +50,23 @@ API em TypeScript rodando como Vercel Serverless Functions, usando o Supabase s�
 
 1. Crie um projeto no [supabase.com](https://supabase.com) (free tier, região São Paulo — `sa-east-1`).
 2. Em *SQL Editor*, rode o conteúdo de `supabase/schema.sql`.
-3. Em *Project Settings → Database → Connection string → URI*, copie a connection string.
-4. Copie `.env.example` para `.env.local` e preencha `DATABASE_URL` (com a senha do banco) e `JWT_SECRET` (qualquer string longa aleatória).
+3. Em *Project Settings → Database → Connection string*, copie a opção **Transaction pooler** (não a "URI" direta — ela só resolve por IPv6 e a Vercel não tem saída IPv6, dá `ENOTFOUND`).
+4. Copie `.env.example` para `.env.local` e preencha `DATABASE_URL` (com a senha do banco) e `JWT_SECRET` (qualquer string longa aleatória). Cadastre as duas também em Vercel → Settings → Environment Variables (Production, Preview e Development).
 5. `npm install`
 6. `npm run dev:api` — sobe a API localmente via `vercel dev`.
 7. `npm run typecheck` — confere os tipos sem gerar build.
 
-**Endpoints prontos até agora:**
+**Endpoints prontos até agora** (todos sob `/api`; os de CRUD usam `?id=` em vez de segmento de rota, porque o plano Hobby da Vercel limita a 12 Serverless Functions por deployment — um `index.ts` por recurso cuida de lista/criação/leitura/atualização/exclusão em vez de dois arquivos por recurso):
 
 - `GET /api/health` — ping
 - `POST /api/auth/signup` — `{ email, password, name, title? }` → `{ token }`
 - `POST /api/auth/login` — `{ email, password }` → `{ token }`
 - `GET /api/auth/me` — header `Authorization: Bearer <token>` → dados da usuária logada
+- `places`, `patients`, `appts`, `insurers`, `exceptions` — todos com o mesmo padrão, exigindo `Authorization: Bearer <token>`:
+  - `GET /api/{recurso}` — lista (appts e exceptions aceitam `?from=YYYY-MM-DD&to=YYYY-MM-DD`; appts também aceita `?placeId=`)
+  - `GET /api/{recurso}?id=<id>` — um item
+  - `POST /api/{recurso}` — cria
+  - `PUT` ou `PATCH /api/{recurso}?id=<id>` — atualiza (campos parciais)
+  - `DELETE /api/{recurso}?id=<id>` — remove
 
 Nunca commite `.env.local` — ele já está no `.gitignore`.

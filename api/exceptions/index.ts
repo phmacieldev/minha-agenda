@@ -20,8 +20,7 @@ const columnByKey: Record<string, string> = { placeId: 'place_id', allDay: 'all_
 
 function idFromQuery(req: VercelRequest): string | undefined {
   const raw = req.query.id;
-  if (Array.isArray(raw)) return raw[0];
-  return raw;
+  return Array.isArray(raw) ? raw[0] : raw;
 }
 
 export default withAuth(async (req: VercelRequest, res: VercelResponse, auth) => {

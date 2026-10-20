@@ -30,8 +30,7 @@ const columnByKey: Record<string, string> = {
 
 function idFromQuery(req: VercelRequest): string | undefined {
   const raw = req.query.id;
-  if (Array.isArray(raw)) return raw[0];
-  return raw;
+  return Array.isArray(raw) ? raw[0] : raw;
 }
 
 async function assertOwned(pool: ReturnType<typeof getPool>, table: string, id: string, userId: string, label: string) {
