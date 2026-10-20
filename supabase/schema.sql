@@ -1,0 +1,101 @@
+-- Minha Agenda — schema do backend (Supabase usado só como Postgres gerenciado)
+-- Autenticação e isolamento por usuária são feitos pela API (não pelo Supabase Auth/RLS),
+-- já que o Postgres só é acessado pela nossa API com uma connection string de servidor.
+
+create extension if not exists pgcrypto; -- gen_random_uuid()
+
+create table if not exists users (
+  id uuid primary key default gen_random_uuid(),
+  email text not null unique,
+  password_hash text not null,
+  name text not null,
+  title text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists places (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  name text not null,
+  color text not null default 'p1',
+  kind text not null default 'clinica',
+  address text default '',
+  price numeric(10,2) not null default 0,
+  duration int not null default 50,
+  hours jsonb not null default '{}'::jsonb,
+  info text default '',
+  msg text,
+  created_at timestamptz not null default now()
+);
+create index if not exists places_user_id_idx on places(user_id);
+
+create table if not exists insurers (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  name text not null,
+  price numeric(10,2) not null default 0,
+  prices jsonb not null default '{}'::jsonb
+);
+create index if not exists insurers_user_id_idx on insurers(user_id);
+
+create table if not exists patients (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  name text not null,
+  phone text default '',
+  notes text default '',
+  pay text default 'particular',
+  insurer_id uuid references insurers(id) on delete set null,
+  birth date,
+  sex text,
+  mother text,
+  father text,
+  card text,
+  diag text,
+  created_at timestamptz not null default now()
+);
+create index if not exists patients_user_id_idx on patients(user_id);
+
+create table if not exists records (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  patient_id uuid not null references patients(id) on delete cascade,
+  date date not null,
+  place_id uuid references places(id) on delete set null,
+  appt_id uuid,
+  text text not null default ''
+);
+create index if not exists records_patient_id_idx on records(patient_id);
+
+create table if not exists appts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  patient_id uuid not null references patients(id) on delete cascade,
+  place_id uuid not null references places(id) on delete cascade,
+  date date not null,
+  time text not null,
+  dur int not null default 50,
+  price numeric(10,2) not null default 0,
+  pay text not null default 'particular',
+  insurer_id uuid references insurers(id) on delete set null,
+  ins_name text,
+  status text not null default 'agendado',
+  paid boolean not null default false,
+  notes text default '',
+  created_at timestamptz not null default now()
+);
+create index if not exists appts_user_id_idx on appts(user_id);
+create index if not exists appts_date_idx on appts(user_id, date);
+
+create table if not exists exceptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  date date not null,
+  place_id uuid references places(id) on delete cascade,
+  type text not null,
+  all_day boolean not null default false,
+  s text,
+  e text,
+  note text default ''
+);
+create index if not exists exceptions_user_id_idx on exceptions(user_id);

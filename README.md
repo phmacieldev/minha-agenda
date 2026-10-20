@@ -34,7 +34,33 @@ npm test
 - `manifest.json` — manifesto do PWA
 - `sw.js` — service worker (cache network-first); **incremente a constante `C` a cada deploy** para invalidar o cache dos usuários
 - `icon-180/192/512.png` — ícones do app
+- `api/` — backend em TypeScript (Vercel serverless functions), ver abaixo
+- `lib/` — código compartilhado do backend (conexão com o banco, autenticação)
+- `supabase/schema.sql` — schema do Postgres
 
-## Dados
+## Dados (hoje)
 
-Tudo fica salvo no `localStorage` do navegador, na chave `minha-agenda-v1` — nada é enviado para servidor nenhum. Cada profissional faz seu próprio cadastro (nome, locais, convênios) no onboarding.
+Tudo fica salvo no `localStorage` do navegador, na chave `minha-agenda-v1` — nada é enviado para servidor nenhum. Cada profissional faz seu próprio cadastro (nome, locais, convênios) no onboarding. A sincronização na nuvem (ver `PLANO.md`) está sendo construída em paralelo, sem tirar o app do ar: o front ainda não fala com a API.
+
+## Backend (em construção)
+
+API em TypeScript rodando como Vercel Serverless Functions, usando o Supabase só como Postgres gerenciado (sem Supabase Auth/RLS — autenticação e isolamento por usuária são feitos pela própria API).
+
+**Configuração local:**
+
+1. Crie um projeto no [supabase.com](https://supabase.com) (free tier, região São Paulo — `sa-east-1`).
+2. Em *SQL Editor*, rode o conteúdo de `supabase/schema.sql`.
+3. Em *Project Settings → Database → Connection string → URI*, copie a connection string.
+4. Copie `.env.example` para `.env.local` e preencha `DATABASE_URL` (com a senha do banco) e `JWT_SECRET` (qualquer string longa aleatória).
+5. `npm install`
+6. `npm run dev:api` — sobe a API localmente via `vercel dev`.
+7. `npm run typecheck` — confere os tipos sem gerar build.
+
+**Endpoints prontos até agora:**
+
+- `GET /api/health` — ping
+- `POST /api/auth/signup` — `{ email, password, name, title? }` → `{ token }`
+- `POST /api/auth/login` — `{ email, password }` → `{ token }`
+- `GET /api/auth/me` — header `Authorization: Bearer <token>` → dados da usuária logada
+
+Nunca commite `.env.local` — ele já está no `.gitignore`.
