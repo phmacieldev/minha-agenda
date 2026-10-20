@@ -1,0 +1,1 @@
+{"name": "Minha Agenda", "short_name": "Agenda", "start_url": "./", "display": "standalone", "background_color": "#F6F5FA", "theme_color": "#D6337A", "lang": "pt-BR", "icons": [{"src": "icon-192.png?v=fono", "sizes": "192x192", "type": "image/png"}, {"src": "icon-512.png?v=fono", "sizes": "512x512", "type": "image/png", "purpose": "any"}]}

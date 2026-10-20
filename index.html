@@ -1,0 +1,1185 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Minha Agenda</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Agenda">
+<meta name="theme-color" content="#F6F5FA" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121019" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png?v=fono">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=fono">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: app de uma coluna, faixa da semana no topo, linha do tempo do dia, barra de abas fixa embaixo */
+:root{
+  --bg:#F6F5FA; --surface:#FFFFFF; --ink:#1E1B2E; --muted:#6B6880; --line:#E4E1EE;
+  --accent:#5B3FD6; --accent-ink:#FFFFFF; --accent-soft:#ECE8FC;
+  --ok:#1F8A4C; --ok-soft:#E3F4EA; --warn:#B46A0B; --warn-soft:#FBF0DF; --bad:#C23B3B; --bad-soft:#FBE6E6;
+  --p1:#138A80; --p2:#D2554A; --p3:#B7791F; --p4:#2F6FD6; --p5:#C2408F; --p6:#3E8E3A;
+  --display:"Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --body:"Figtree", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --r:16px; --shadow:0 1px 2px rgba(30,27,46,.06), 0 8px 24px rgba(30,27,46,.06);
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#121019; --surface:#1C1926; --ink:#ECEAF4; --muted:#9A96AD; --line:#2D2939;
+  --accent:#9C88FF; --accent-ink:#14111D; --accent-soft:#2A2442;
+  --ok:#5CCB8A; --ok-soft:#173326; --warn:#E9A94E; --warn-soft:#3A2B14; --bad:#F07E7E; --bad-soft:#3D1D1F;
+  --p1:#4FC9BC; --p2:#F08A7F; --p3:#E8B04E; --p4:#78A6F5; --p5:#EB86C4; --p6:#82C97D;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
+  color-scheme:dark;
+}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 var(--body);-webkit-font-smoothing:antialiased;overscroll-behavior-y:none}
+[hidden]{display:none!important}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+.wrap{max-width:640px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-top:calc(env(safe-area-inset-top,0px) + 12px);padding-bottom:calc(env(safe-area-inset-bottom,0px) + 110px)}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.label{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.num{font-variant-numeric:tabular-nums}
+
+/* Header */
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:6px 14px}
+.top h1{font-size:28px}
+.top .sub{font-size:14px;color:var(--muted)}
+.iconbtn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;flex:none}
+.iconbtn svg{width:20px;height:20px}
+.chipbtn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 14px;font-size:14px;font-weight:600}
+
+/* Week strip */
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px}
+.day{border:0;background:transparent;border-radius:14px;padding:8px 0 10px;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative}
+.day .dw{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.day .dn{font-family:var(--display);font-size:20px;font-weight:700}
+.day .dots{display:flex;gap:3px;height:6px}
+.day .dots i{width:5px;height:5px;border-radius:50%;display:block}
+.day.today .dn{color:var(--accent)}
+.day.sel{background:var(--accent);color:var(--accent-ink)}
+.day.sel .dw,.day.sel .dn{color:var(--accent-ink)}
+.weeknav{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.weeknav .m{font-weight:600;text-transform:capitalize}
+.weeknav .btns{display:flex;gap:6px}
+
+/* Day header */
+.dayhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:16px 0 10px;flex-wrap:wrap}
+.dayhead h2{font-size:22px}
+
+/* Timeline */
+.list{display:flex;flex-direction:column;gap:8px}
+.appt{display:grid;grid-template-columns:56px 1fr auto;gap:12px;align-items:center;background:var(--surface);border-radius:var(--r);padding:12px 14px 12px 0;box-shadow:var(--shadow);border:0;text-align:left;width:100%;position:relative;overflow:hidden}
+.appt::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--pc)}
+.appt .t{font-variant-numeric:tabular-nums;font-weight:700;text-align:right;font-size:15px;line-height:1.2}
+.appt .t small{display:block;font-weight:500;color:var(--muted);font-size:12px}
+.appt .who{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.appt .where{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px;min-width:0}
+.appt .where i{width:8px;height:8px;border-radius:50%;background:var(--pc);flex:none}
+.appt.dim{opacity:.55}
+.appt.dim .who{text-decoration:line-through}
+.free{display:grid;grid-template-columns:56px 1fr auto;gap:12px;align-items:center;border:1.5px dashed var(--line);border-radius:var(--r);padding:9px 14px 9px 0;background:transparent;text-align:left;width:100%;color:var(--muted)}
+.free .t{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;font-size:14px}
+.free .plus{font-weight:600;color:var(--accent);font-size:14px}
+.pill{font-size:12px;font-weight:600;padding:4px 9px;border-radius:999px;white-space:nowrap}
+.st-agendado{background:var(--accent-soft);color:var(--accent)}
+.st-confirmado{background:var(--ok-soft);color:var(--ok)}
+.st-concluido{background:var(--line);color:var(--ink)}
+.st-faltou{background:var(--warn-soft);color:var(--warn)}
+.st-cancelado{background:var(--bad-soft);color:var(--bad)}
+.empty{text-align:center;padding:28px 16px;color:var(--muted);background:var(--surface);border-radius:var(--r);border:1px solid var(--line)}
+.empty b{display:block;color:var(--ink);font-family:var(--display);font-size:18px;margin-bottom:4px}
+
+/* Cards / lists */
+.card{background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);padding:16px}
+.rows{background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;padding:14px 16px;border:0;background:transparent;width:100%;text-align:left;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.row .grow{flex:1;min-width:0}
+.row .grow b{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .chev{color:var(--muted)}
+.swatch{width:12px;height:12px;border-radius:50%;flex:none}
+.avatar{width:38px;height:38px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-weight:700;flex:none;font-size:15px}
+.section{margin-top:22px;display:flex;flex-direction:column;gap:10px}
+.search{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface)}
+
+/* Summary */
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.stat{background:var(--surface);border-radius:var(--r);padding:14px;box-shadow:var(--shadow)}
+.stat .v{font-family:var(--display);font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
+.bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;border-radius:99px;background:var(--pc)}
+
+/* Tab bar */
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+.tabs .in{max-width:640px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
+.tab{border:0;background:transparent;padding:8px 0 8px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;font-weight:600;color:var(--muted)}
+.tab svg{width:24px;height:24px}
+.tab.on{color:var(--accent)}
+.fab{position:fixed;z-index:21;right:max(18px,calc(env(safe-area-inset-right,0px) + 18px));bottom:calc(env(safe-area-inset-bottom,0px) + 76px);height:56px;padding:0 22px 0 18px;border-radius:28px;border:0;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:16px;display:flex;align-items:center;gap:8px;box-shadow:0 8px 24px color-mix(in srgb,var(--accent) 40%,transparent)}
+.fab svg{width:22px;height:22px}
+
+/* Sheet */
+.scrim{position:fixed;inset:0;background:rgba(10,8,20,.45);z-index:40;opacity:0;transition:opacity .2s}
+.scrim.show{opacity:1}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:41;max-height:92%;display:flex;flex-direction:column;background:var(--bg);border-radius:22px 22px 0 0;transform:translateY(100%);transition:transform .25s cubic-bezier(.2,.8,.2,1);max-width:640px;margin:0 auto}
+.sheet.show{transform:none}
+.sheet .grab{width:40px;height:5px;border-radius:9px;background:var(--line);margin:8px auto 0;flex:none}
+.sheet .sh{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));flex:none}
+.sheet .sh h3{font-size:20px}
+.sheet .sb{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:4px max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 20px) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
+@media (prefers-reduced-motion: reduce){.sheet,.scrim{transition:none}}
+
+/* Forms */
+.field{display:flex;flex-direction:column;gap:6px}
+.field>span{font-size:13px;font-weight:600;color:var(--muted)}
+.input,select.input,textarea.input{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface);font-size:16px;min-height:48px;appearance:none;-webkit-appearance:none}
+select.input{background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 20px) 21px,calc(100% - 15px) 21px;background-size:5px 5px;background-repeat:no-repeat;padding-right:36px}
+textarea.input{min-height:80px;resize:vertical}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.two>*{min-width:0}
+.btn{border:0;border-radius:14px;min-height:50px;padding:0 18px;font-weight:700;font-size:16px;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.primary{background:var(--accent);color:var(--accent-ink)}
+.btn.soft{background:var(--accent-soft);color:var(--accent)}
+.btn.ghost{background:var(--surface);border:1px solid var(--line)}
+.btn.wa{background:#1FA855;color:#fff}
+.btn.danger{background:var(--bad-soft);color:var(--bad)}
+.btn.block{width:100%}
+.btn svg{width:20px;height:20px}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap}
+.btnrow .btn{flex:1 1 140px}
+.slots{display:flex;flex-wrap:wrap;gap:6px}
+.slot{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 12px;font-variant-numeric:tabular-nums;font-weight:600;font-size:14px}
+.slot.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 13px;font-size:14px;font-weight:600}
+.seg button.on{border-color:transparent}
+.colors{display:flex;gap:10px;flex-wrap:wrap}
+.colors button{width:36px;height:36px;border-radius:50%;border:3px solid transparent;background:var(--c)}
+.colors button.on{border-color:var(--ink)}
+.hours{display:flex;flex-direction:column;gap:8px}
+.hrow{display:grid;grid-template-columns:62px 1fr;gap:10px;align-items:start}
+.hrow .dn{padding-top:12px;font-weight:600}
+.hrow .ivs{display:flex;flex-direction:column;gap:6px}
+.iv{display:grid;grid-template-columns:1fr auto 1fr 40px;gap:6px;align-items:center}
+.iv .input{min-height:42px;padding:8px 10px;font-size:15px}
+.iv .x{width:40px;height:42px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--muted)}
+.link{border:0;background:none;color:var(--accent);font-weight:600;padding:6px 0;text-align:left;font-size:14px}
+.toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.toggle input{width:22px;height:22px;accent-color:var(--accent)}
+.notice{padding:12px 14px;border-radius:12px;background:var(--warn-soft);color:var(--warn);font-size:14px;font-weight:500}
+.info{padding:12px 14px;border-radius:12px;background:var(--accent-soft);color:var(--ink);font-size:14px}
+pre.share{white-space:pre-wrap;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;margin:0;font:15px/1.5 var(--body)}
+
+/* Toast */
+.toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 150px);transform:translate(-50%,20px);background:var(--ink);color:var(--bg);padding:12px 18px;border-radius:12px;font-weight:600;font-size:14px;z-index:60;opacity:0;transition:.2s;pointer-events:none;max-width:calc(100% - 32px);text-align:center}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* Onboarding */
+.ob{display:flex;flex-direction:column;gap:18px;padding-top:24px}
+.ob .hero{display:flex;flex-direction:column;gap:10px}
+.ob .hero h1{font-size:34px;line-height:1.1}
+.ob .mark{width:64px;height:64px;border-radius:18px;background:var(--accent);display:grid;place-items:center;color:var(--accent-ink)}
+.ob .mark svg{width:34px;height:34px}
+.obplace{display:grid;grid-template-columns:auto 1fr 40px;gap:10px;align-items:center}
+.obplace .swatch{width:16px;height:16px}
+
+.tabs .in{grid-template-columns:repeat(5,1fr)}
+.tab{font-size:10.5px}
+.seg button.sel{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+.seg.solid button.sel{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.pay{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--line);color:var(--ink);white-space:nowrap}
+.pay.conv{background:var(--accent-soft);color:var(--accent)}
+.daygrid{display:flex;flex-direction:column}
+.drow{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:center;padding:11px 14px;border:0;border-top:1px solid var(--line);background:transparent;width:100%;text-align:left}
+.drow:first-of-type{border-top:0}
+.drow .d{font-weight:700}
+.drow .ch{display:flex;flex-wrap:wrap;gap:5px;min-width:0}
+.drow .ch span{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;padding:3px 8px;border-radius:8px;background:color-mix(in srgb,var(--pc) 14%,transparent);color:var(--ink)}
+.drow .off{font-size:13px;color:var(--muted)}
+.placehead{display:flex;align-items:center;gap:10px;padding:14px 14px 10px;border-bottom:1px solid var(--line)}
+.placehead b{font-family:var(--display);font-size:17px;flex:1;min-width:0}
+.ivrow{display:grid;grid-template-columns:1fr auto 1fr 44px;gap:8px;align-items:center}
+.ivrow .input{min-height:46px}
+.ivrow .x{width:44px;height:46px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--muted)}
+.presets{display:flex;flex-wrap:wrap;gap:6px}
+.presets button{border:1px dashed var(--line);background:transparent;border-radius:10px;padding:7px 11px;font-size:13px;font-weight:600;color:var(--muted)}
+.exc{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center}
+.tag{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:6px}
+.tag.block{background:var(--bad-soft);color:var(--bad)}
+.tag.extra{background:var(--ok-soft);color:var(--ok)}
+.banner{display:flex;gap:10px;align-items:center;padding:11px 14px;border-radius:12px;background:var(--bad-soft);color:var(--bad);font-size:14px;font-weight:600;margin-bottom:8px}
+.grp{border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:8px}
+.grp:first-child{border-top:0;padding-top:0}
+.gline{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:baseline}
+.gline .nm{font-weight:600;display:flex;align-items:center;gap:6px;min-width:0}
+.gline .tot{font-weight:700;font-variant-numeric:tabular-nums;text-align:right}
+.gline .det{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.gline .stt{font-size:12px;font-weight:600;text-align:right}
+.mini{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:7px 12px;font-size:13px;font-weight:600;color:var(--accent)}
+.ptotal{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.ptotal b{font-family:var(--display);font-size:17px}
+.tbl{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+.tbl th{text-align:left;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:8px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl td.r,.tbl th.r{text-align:right;white-space:nowrap}
+.scrollx{overflow-x:auto;-webkit-overflow-scrolling:touch;background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow)}
+.stats.three{grid-template-columns:repeat(3,1fr)}
+@media (max-width:380px){.stats.three{grid-template-columns:repeat(2,1fr)}}
+.stat .v.sm{font-size:19px}
+.cpick{display:flex;flex-direction:column;gap:12px}
+.cpad{position:relative;height:170px;border-radius:14px;touch-action:none;cursor:crosshair;
+  background:linear-gradient(to bottom,rgba(255,255,255,.82),rgba(255,255,255,0) 45%,rgba(0,0,0,0) 55%,rgba(0,0,0,.72)),linear-gradient(to right,hsl(0,78%,53%),hsl(30,78%,53%),hsl(60,78%,53%),hsl(90,78%,53%),hsl(120,78%,53%),hsl(150,78%,53%),hsl(180,78%,53%),hsl(210,78%,53%),hsl(240,78%,53%),hsl(270,78%,53%),hsl(300,78%,53%),hsl(330,78%,53%),hsl(360,78%,53%));
+  box-shadow:inset 0 0 0 1px var(--line)}
+.cthumb{position:absolute;width:30px;height:30px;border-radius:50%;transform:translate(-50%,-50%);border:3px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.35),0 3px 10px rgba(0,0,0,.3);pointer-events:none}
+.crow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.cprev{width:46px;height:46px;border-radius:12px;flex:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.1)}
+.chex{width:120px!important;min-height:46px;text-transform:uppercase}
+.obcol{width:34px;height:34px;border-radius:50%;border:3px solid var(--surface);box-shadow:0 0 0 1px var(--line);flex:none;padding:0}
+.obcol.on{box-shadow:0 0 0 2px var(--ink)}
+.obpick{background:var(--surface);border-radius:var(--r);padding:12px;box-shadow:var(--shadow)}
+.cdone{margin-top:2px}
+#pTabs{position:sticky;top:-4px;z-index:2;background:var(--bg);padding-block:6px}
+#pTabs{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+#pTabs button{padding:9px 4px;font-size:13px;text-align:center}
+.sheet.tall{height:92%}
+.bkbar{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;text-align:left;border:0;border-radius:14px;padding:12px 14px;margin-bottom:10px;background:var(--warn-soft);color:var(--warn)}
+.bkbar b{display:block;color:var(--ink)}
+.bkbar .go{font-weight:700;background:var(--warn);color:var(--surface);padding:8px 14px;border-radius:10px;flex:none}
+.ob .mark{width:76px;height:76px;background:none;border-radius:22%;overflow:hidden;box-shadow:0 10px 26px rgba(214,51,122,.35)}
+.ob .mark .logo{width:100%;height:100%;display:block}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<nav class="tabs" id="tabs" hidden>
+  <div class="in">
+    <button class="tab" data-tab="agenda"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>Agenda</button>
+    <button class="tab" data-tab="pacientes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/></svg>Pacientes</button>
+    <button class="tab" data-tab="horarios"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>Horários</button>
+    <button class="tab" data-tab="relatorios"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 20V11M12 20V5M19 20v-6"/></svg>Relatórios</button>
+    <button class="tab" data-tab="ajustes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Ajustes</button>
+  </div>
+</nav>
+<button class="fab" id="fab" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span id="fabTxt">Agendar</span></button>
+
+<div class="scrim" id="scrim" hidden></div>
+<section class="sheet" id="sheet" hidden role="dialog" aria-modal="true">
+  <div class="grab"></div>
+  <div class="sh"><h3 id="sheetTitle"></h3><button class="iconbtn" id="sheetClose" aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="sb" id="sheetBody"></div>
+</section>
+<div class="toast" id="toast"></div>
+
+<script>
+(()=>{
+const KEY='minha-agenda-v1';
+const COLORS=['p1','p2','p3','p4','p5','p6'];
+const WD=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const WDL=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+const MES=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+const STATUS={agendado:'Agendado',confirmado:'Confirmado',concluido:'Atendido',faltou:'Faltou',cancelado:'Cancelado'};
+const DEFAULT_MSG='Olá, {paciente}! Passando para confirmar seu atendimento {dia} às {hora} em {local}. Posso confirmar?';
+
+const $=s=>document.querySelector(s);
+const app=$('#app');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
+const pad=n=>String(n).padStart(2,'0');
+const iso=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const parse=s=>{const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d)};
+const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
+const toMin=t=>{const[h,m]=t.split(':').map(Number);return h*60+m};
+const toHM=m=>pad(Math.floor(m/60))+':'+pad(m%60);
+const money=v=>(Number(v)||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const startOfWeek=d=>addDays(d,-((d.getDay()+6)%7));
+const todayISO=()=>iso(new Date());
+const digits=s=>String(s||'').replace(/\D/g,'');
+const fmtPhone=s=>{const d=digits(s);if(d.length===11)return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;if(d.length===10)return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`;return s||''};
+const initials=n=>String(n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase();
+const cap=s=>s?s[0].toUpperCase()+s.slice(1):s;
+const fmtDate=s=>{const d=parse(s);return pad(d.getDate())+'/'+pad(d.getMonth()+1)};
+const dayLabel=s=>{const d=parse(s);if(s===todayISO())return 'hoje';if(s===iso(addDays(new Date(),1)))return 'amanhã';return `${WDL[d.getDay()]}, ${d.getDate()}/${pad(d.getMonth()+1)}`};
+const TIMES=(()=>{const o=[];for(let m=5*60;m<=23*60+45;m+=15)o.push(toHM(m));return o})();
+const timeSel=(attrs,val)=>{const list=TIMES.includes(val)||!val?TIMES:[...TIMES,val].sort();return `<select class="input num" ${attrs}>${list.map(t=>`<option value="${t}" ${t===val?'selected':''}>${t}</option>`).join('')}</select>`};
+const DAY_ORDER=[1,2,3,4,5,6,0];
+const cv=c=>!c?'var(--p1)':(c[0]==='#'?c:`var(--${c})`);
+const tokenHex=c=>{if(!c)return '#138a80';if(c[0]==='#')return c;const v=getComputedStyle(document.documentElement).getPropertyValue('--'+c).trim();return v||'#138a80'};
+function hslToHex(h,s,l){s/=100;l/=100;const k=n=>(n+h/30)%12,a=s*Math.min(l,1-l),f=n=>l-a*Math.max(-1,Math.min(k(n)-3,Math.min(9-k(n),1)));return '#'+[f(0),f(8),f(4)].map(x=>Math.round(x*255).toString(16).padStart(2,'0')).join('')}
+function hexToHsl(hex){let r=parseInt(hex.slice(1,3),16)/255,g=parseInt(hex.slice(3,5),16)/255,b=parseInt(hex.slice(5,7),16)/255;const mx=Math.max(r,g,b),mn=Math.min(r,g,b);let h=0,l=(mx+mn)/2,d=mx-mn,s=d?d/(1-Math.abs(2*l-1)):0;
+  if(d){h=mx===r?((g-b)/d)%6:mx===g?(b-r)/d+2:(r-g)/d+4;h*=60;if(h<0)h+=360}return{h,s:s*100,l:l*100}}
+/* seletor de cor: arraste o dedo no quadro (matiz na horizontal, claro/escuro na vertical) */
+function colorPicker(root,initial,onChange,onDone){
+  const SAT=78,LMAX=88,LMIN=18;
+  root.innerHTML=`<div class="cpad" tabindex="0" aria-label="Escolher cor"><div class="cthumb"></div></div>
+    <div class="crow"><span class="cprev"></span><input class="input num chex" maxlength="7" spellcheck="false" autocapitalize="off" aria-label="Código da cor"><span class="small muted">ou escolha rápida:</span></div>
+    <div class="colors">${COLORS.map(c=>`<button type="button" data-c="${c}" style="--c:${cv(c)}" aria-label="Cor sugerida"></button>`).join('')}</div>${onDone?'<button type="button" class="btn primary block cdone">Confirmar cor</button>':''}`;
+  const pad=root.querySelector('.cpad'),th=root.querySelector('.cthumb'),pv=root.querySelector('.cprev'),hx=root.querySelector('.chex');
+  let cur=initial;
+  const place=(hex)=>{const{h,l}=hexToHsl(hex);th.style.left=(h/360*100)+'%';th.style.top=(Math.max(0,Math.min(1,(LMAX-l)/(LMAX-LMIN)))*100)+'%'};
+  const show=(c,fromInput)=>{cur=c;const hex=tokenHex(c);pv.style.background=cv(c);th.style.background=hex;if(!fromInput)hx.value=hex.toUpperCase();place(hex);
+    root.querySelectorAll('.colors button').forEach(b=>b.classList.toggle('on',b.dataset.c===c));onChange(c)};
+  const pick=e=>{const r=pad.getBoundingClientRect();const x=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),y=Math.max(0,Math.min(1,(e.clientY-r.top)/r.height));
+    show(hslToHex(Math.round(x*359),SAT,Math.round(LMAX-y*(LMAX-LMIN))))};
+  pad.addEventListener('pointerdown',e=>{e.preventDefault();pad.setPointerCapture(e.pointerId);pick(e)});
+  pad.addEventListener('pointermove',e=>{if(pad.hasPointerCapture(e.pointerId))pick(e)});
+  pad.addEventListener('keydown',e=>{const{h,l}=hexToHsl(tokenHex(cur));const d={ArrowLeft:[-6,0],ArrowRight:[6,0],ArrowUp:[0,4],ArrowDown:[0,-4]}[e.key];if(!d)return;e.preventDefault();show(hslToHex((h+d[0]+360)%360,SAT,Math.max(LMIN,Math.min(LMAX,l+d[1]))))});
+  hx.addEventListener('input',()=>{let v=hx.value.trim();if(v[0]!=='#')v='#'+v;if(/^#[0-9a-fA-F]{6}$/.test(v))show(v.toLowerCase(),true)});
+  root.querySelectorAll('.colors button').forEach(b=>b.onclick=()=>show(b.dataset.c));
+  if(onDone)root.querySelector('.cdone').onclick=()=>onDone(cur);
+  show(initial);
+}
+
+/* ---------- dados ---------- */
+let S=null;
+try{const r=localStorage.getItem(KEY);if(r)S=JSON.parse(r)}catch(e){}
+function migrate(){
+  if(!S)return;
+  S.insurers=S.insurers||[];S.exceptions=S.exceptions||[];S.settings=S.settings||{msg:DEFAULT_MSG};
+  S.appts.forEach(a=>{if(!a.pay)a.pay='particular'});
+}
+migrate();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('Não consegui salvar neste aparelho')}}
+function blankHours(){const h={};for(let i=0;i<7;i++)h[i]=[];return h}
+function newPlace(name,color,kind){return{id:uid(),name,color,kind:kind||'clinica',address:'',price:0,duration:50,hours:blankHours()}}
+
+const ui={tab:'agenda',sel:todayISO(),week:iso(startOfWeek(new Date())),q:'',rep:{mode:'mes',anchor:todayISO()},showList:false};
+
+const place=id=>S.places.find(p=>p.id===id);
+const patient=id=>S.patients.find(p=>p.id===id);
+const insurer=id=>S.insurers.find(i=>i.id===id);
+const activeAppts=()=>S.appts.filter(a=>a.status!=='cancelado');
+const apptsOn=date=>S.appts.filter(a=>a.date===date).sort((a,b)=>a.time.localeCompare(b.time));
+const insPrice=(ins,placeId)=>{if(!ins)return 0;const v=ins.prices&&ins.prices[placeId];return (v!==undefined&&v!==''&&v!==null)?+v:(+ins.price||0)};
+const payKey=a=>a.pay==='convenio'?'c:'+(a.insurerId||a.insName||'?'):'particular';
+const payName=a=>a.pay==='convenio'?(insurer(a.insurerId)?.name||a.insName||'Convênio'):'Particular';
+
+/* intervalos de atendimento do dia, já com folgas e horários extras */
+function dayIntervals(date,p){
+  const wd=parse(date).getDay();
+  const ex=S.exceptions.filter(e=>e.date===date&&(!e.placeId||e.placeId===p.id));
+  if(ex.some(e=>e.type==='block'&&e.allDay))return [];
+  const ivs=(p.hours[wd]||[]).map(x=>({...x}));
+  ex.filter(e=>e.type==='extra').forEach(e=>ivs.push({s:e.s,e:e.e}));
+  return ivs;
+}
+const blocksOn=date=>S.exceptions.filter(e=>e.date===date&&e.type==='block');
+function freeSlots(date,placeId,ignoreId){
+  const busy=activeAppts().filter(a=>a.date===date&&a.id!==ignoreId).map(a=>[toMin(a.time),toMin(a.time)+(+a.dur||50)]);
+  const out=[];
+  const places=placeId?[place(placeId)].filter(Boolean):S.places;
+  const isToday=date===todayISO();const now=new Date();const nowMin=now.getHours()*60+now.getMinutes();
+  for(const p of places){
+    const dur=+p.duration||50;
+    const pb=busy.concat(blocksOn(date).filter(e=>!e.allDay&&(!e.placeId||e.placeId===p.id)).map(e=>[toMin(e.s),toMin(e.e)]));
+    for(const iv of dayIntervals(date,p)){
+      if(!iv.s||!iv.e)continue;
+      let t=toMin(iv.s);const end=toMin(iv.e);
+      while(t+dur<=end){
+        const clash=pb.find(([a,b])=>t<b&&t+dur>a);
+        if(clash){t=Math.max(t+5,clash[1]);continue}
+        if(!(isToday&&t<nowMin)&&!out.some(o=>o.time===toHM(t)&&o.placeId===p.id))out.push({time:toHM(t),placeId:p.id,dur});
+        t+=dur;
+      }
+    }
+  }
+  return out.sort((a,b)=>a.time.localeCompare(b.time));
+}
+function conflict(date,time,dur,ignoreId){
+  const s=toMin(time),e=s+(+dur||50);
+  return activeAppts().find(a=>a.id!==ignoreId&&a.date===date&&s<toMin(a.time)+(+a.dur||50)&&e>toMin(a.time));
+}
+
+/* ---------- toast / sheet ---------- */
+let tt;
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2200)}
+const sheet=$('#sheet'),scrim=$('#scrim');
+function openSheet(title,html,mount){
+  sheet.classList.remove('tall');$('#sheetTitle').textContent=title;$('#sheetBody').innerHTML=html;
+  sheet.hidden=false;scrim.hidden=false;
+  requestAnimationFrame(()=>{sheet.classList.add('show');scrim.classList.add('show')});
+  $('#sheetBody').scrollTop=0;
+  mount&&mount($('#sheetBody'));
+}
+function closeSheet(){sheet.classList.remove('show');scrim.classList.remove('show');setTimeout(()=>{sheet.hidden=true;scrim.hidden=true;$('#sheetBody').innerHTML=''},250)}
+$('#sheetClose').onclick=closeSheet;scrim.onclick=closeSheet;
+function twoTap(btn,label,armedLabel,fn,ms=3200){let armed=false;btn.onclick=()=>{if(!armed){armed=true;btn.textContent=armedLabel;setTimeout(()=>{armed=false;btn.textContent=label},ms);return}fn()}}
+function segSelect(container,val){container.querySelectorAll('button').forEach(x=>x.classList.toggle('sel',x.dataset.v===val))}
+
+function copy(text){
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(()=>toast('Copiado'),()=>toast('Selecione o texto e copie'))}
+  else toast('Selecione o texto e copie');
+}
+function saveFile(name,content,type,onSaved){
+  const blob=new Blob([content],{type});
+  try{const file=new File([blob],name,{type});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:name}).then(()=>onSaved&&onSaved()).catch(()=>{});return}}catch(e){}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);toast('Arquivo salvo');onSaved&&onSaved();
+}
+/* ---------- backup ---------- */
+const daysSince=ts=>ts?Math.floor((Date.now()-ts)/864e5):null;
+function backupDue(){if(!S||S.demo)return false;const d=daysSince(S.settings.lastBackup);if(d===null)return S.appts.length+S.patients.length>=3;return d>=7}
+function backupLabel(){const d=daysSince(S.settings.lastBackup);if(d===null)return 'Nenhuma cópia feita ainda';if(d===0)return 'Última cópia: hoje';if(d===1)return 'Última cópia: ontem';return `Última cópia: há ${d} dias`}
+function doBackup(){
+  const stamp=new Date();const name=`agenda-backup-${iso(stamp)}.json`;
+  saveFile(name,JSON.stringify({...S,backupAt:stamp.toISOString()},null,1),'application/json',()=>{S.settings.lastBackup=Date.now();save();render();toast('Cópia salva')});
+}
+function backupSheet(){
+  openSheet('Cópia de segurança',`
+    <div class="card" style="display:flex;flex-direction:column;gap:6px"><b>${backupLabel()}</b><span class="small muted">${S.appts.length} atendimentos · ${S.patients.length} pacientes · ${S.patients.reduce((n,p)=>n+(p.records||[]).length,0)} evoluções</span></div>
+    <button class="btn primary block" id="bkNow">Salvar cópia agora</button>
+    <div class="small muted">Na tela que abrir, toque em <b>Salvar em Arquivos</b> e escolha a pasta <b>iCloud Drive</b> (ou o Google Drive, se ele estiver instalado). Use sempre a mesma pasta, por exemplo "Backup Agenda". Cada cópia leva a data no nome, então as antigas ficam guardadas.</div>
+    <div class="info small">Para restaurar num celular novo: instale o app, vá em Ajustes › Restaurar cópia e escolha o arquivo mais recente.</div>`,b=>{b.querySelector('#bkNow').onclick=()=>{doBackup();closeSheet()}});
+}
+try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+function waLink(phone,text){let d=digits(phone);if(d.length===10||d.length===11)d='55'+d;return 'https://wa.me/'+d+'?text='+encodeURIComponent(text)}
+function fillMsg(a){
+  const p=patient(a.patientId),pl=place(a.placeId);
+  return (pl?.msg||S.settings.msg||DEFAULT_MSG).replace(/\{info\}/g,pl?.info||'').replace(/\{paciente\}/g,(p?.name||'').split(' ')[0]).replace(/\{dia\}/g,dayLabel(a.date)).replace(/\{hora\}/g,a.time).replace(/\{local\}/g,pl?.name||'').replace(/\{endereco\}/g,pl?.address||'').replace(/\{profissional\}/g,S.profile.name||'').replace(/[ \t]{2,}/g,' ').trim();
+}
+const placeMsgSuggestion=pl=>pl.kind==='particular'?'Olá, {paciente}! Confirmando seu atendimento particular {dia} às {hora}. Endereço: {endereco}. {info} Posso confirmar?':'Olá, {paciente}! Confirmando seu atendimento {dia} às {hora} na {local} ({endereco}). {info} Posso confirmar?';
+
+/* ---------- onboarding ---------- */
+function onboarding(){
+  $('#tabs').hidden=true;$('#fab').hidden=true;
+  let places=[{name:'Clínica 1',color:'p1'},{name:'Clínica 2',color:'p4'},{name:'Particular',color:'p5'}];
+  let openCol=-1,obName='',obTitle='';
+  const draw=()=>{
+    app.innerHTML=`<div class="ob">
+      <div class="hero"><div class="mark"><svg class="logo" viewBox="0 0 1024 1024" aria-hidden="true"><defs><linearGradient id="lgBg" x1="0" y1="0" x2="0.55" y2="1"><stop offset="0" stop-color="#FF8FB6"/><stop offset="1" stop-color="#D6337A"/></linearGradient></defs><rect width="1024" height="1024" rx="228" fill="url(#lgBg)"/><rect x="196" y="236" width="632" height="464" rx="150" fill="#fff"/><path d="M330 640 L300 812 L470 690 Z" fill="#fff"/><g fill="#D6337A"><rect x="256" y="423" width="44" height="90" rx="22"/><rect x="334" y="383" width="44" height="170" rx="22"/><rect x="412" y="338" width="44" height="260" rx="22"/><rect x="490" y="383" width="44" height="170" rx="22"/><rect x="568" y="318" width="44" height="300" rx="22"/><rect x="646" y="368" width="44" height="200" rx="22"/><rect x="724" y="413" width="44" height="110" rx="22"/></g><circle cx="760" cy="760" r="132" fill="#fff"/><circle cx="760" cy="760" r="110" fill="#FFECF4"/><path d="M702 762 L746 806 L822 720" fill="none" stroke="#D6337A" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <h1>Sua agenda de atendimentos, num lugar só</h1>
+      <p class="muted" style="margin:0">Clínicas, convênios e particular juntos, horários livres à vista, confirmação pelo WhatsApp e relatório para conferir os repasses.</p></div>
+      <label class="field"><span>Seu nome</span><input class="input" id="obName" placeholder="Ex.: Ana Souza" autocomplete="name"></label>
+      <label class="field"><span>Profissão (opcional)</span><input class="input" id="obTitle" placeholder="Ex.: Fisioterapeuta"></label>
+      <div class="field"><span>Onde você atende</span>
+        <div style="display:flex;flex-direction:column;gap:8px">${places.map((p,i)=>`<div class="obplace"><button type="button" class="obcol ${openCol===i?'on':''}" data-col="${i}" style="background:${cv(p.color)}" aria-label="Mudar a cor de ${esc(p.name||'local')}"></button><input class="input" data-pi="${i}" value="${esc(p.name)}" placeholder="Nome do local"><button class="iconbtn" data-rm="${i}" aria-label="Remover">✕</button></div>${openCol===i?`<div class="cpick obpick" id="obPick"></div>`:''}`).join('')}</div>
+        <button class="link" id="obAdd">+ Adicionar outro local</button>
+        <span class="small muted" style="font-weight:400">Toque na bolinha colorida para escolher a cor de cada local. Depois você ajusta horários na aba Horários e cadastra os convênios em Ajustes.</span>
+      </div>
+      <button class="btn primary block" id="obGo">Começar</button>
+      <button class="btn ghost block" id="obDemo">Ver com exemplos primeiro</button>
+    </div>`;
+    $('#obName').value=obName;$('#obTitle').value=obTitle;
+    $('#obName').oninput=e=>obName=e.target.value;$('#obTitle').oninput=e=>obTitle=e.target.value;
+    app.querySelectorAll('[data-pi]').forEach(inp=>inp.oninput=()=>places[+inp.dataset.pi].name=inp.value);
+    app.querySelectorAll('[data-col]').forEach(b=>b.onclick=()=>{const i=+b.dataset.col;openCol=openCol===i?-1:i;draw()});
+    if(openCol>=0&&places[openCol]){const sw=app.querySelector(`[data-col="${openCol}"]`);
+      colorPicker($('#obPick'),places[openCol].color,c=>{places[openCol].color=c;sw.style.background=cv(c)},()=>{openCol=-1;draw()});}
+    app.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{places.splice(+b.dataset.rm,1);openCol=-1;draw()});
+    $('#obAdd').onclick=()=>{places.push({name:'',color:COLORS[places.length%6]});openCol=-1;draw();app.querySelector(`[data-pi="${places.length-1}"]`).focus()};
+    $('#obGo').onclick=()=>{
+      const name=$('#obName').value.trim();
+      if(!name){toast('Escreva seu nome');$('#obName').focus();return}
+      const pl=places.filter(p=>p.name.trim()).map(p=>{const x=newPlace(p.name.trim(),p.color,/particular/i.test(p.name)?'particular':'clinica');for(let d=1;d<=5;d++)x.hours[d]=[{s:'08:00',e:'12:00'},{s:'14:00',e:'18:00'}];return x});
+      if(!pl.length){toast('Adicione pelo menos um local');return}
+      S={v:2,profile:{name,title:$('#obTitle').value.trim()},places:pl,patients:[],appts:[],insurers:[],exceptions:[],settings:{msg:DEFAULT_MSG}};
+      save();go('horarios');toast('Agora ajuste seus dias e horários');
+    };
+    $('#obDemo').onclick=()=>{S=demo();save();go('agenda');toast('Exemplos carregados. Apague em Ajustes quando quiser.')};
+  };
+  draw();
+}
+
+function demo(){
+  const c1=newPlace('Clínica Vida','p1'),c2=newPlace('Espaço Saúde','p4'),pt=newPlace('Particular','p5','particular');
+  c1.address='Av. Pelinca, 100';c1.price=90;c1.duration=50;
+  c2.address='Rua Treze de Maio, 250';c2.price=80;c2.duration=45;
+  pt.address='no seu endereço (domiciliar)';pt.price=150;pt.duration=60;
+  c1.info='Sala 4, 2º andar. Chegue 10 minutos antes e traga a carteirinha do convênio.';c1.msg=placeMsgSuggestion(c1);
+  pt.info='Pagamento por Pix ao final da sessão.';pt.msg=placeMsgSuggestion(pt);
+  for(const d of [1,3,5])c1.hours[d]=[{s:'08:00',e:'12:00'}];
+  for(const d of [2,4])c2.hours[d]=[{s:'08:00',e:'12:00'},{s:'13:30',e:'17:00'}];
+  for(const d of [1,3,5])pt.hours[d]=[{s:'14:00',e:'19:00'}];
+  pt.hours[6]=[{s:'08:00',e:'11:00'}];
+  const i1={id:uid(),name:'CIMED',price:60,prices:{[c1.id]:65,[c2.id]:55}},i2={id:uid(),name:'Unimed',price:75,prices:{}};
+  const names=[['Mariana Costa','22998110001'],['João Pereira','22998110002'],['Luíza Andrade','22998110003'],['Carlos Mendes','22998110004'],['Beatriz Lima','22998110005'],['Rafael Souza','22998110006']];
+  const pats=names.map(([n,ph])=>({id:uid(),name:n,phone:ph,notes:''}));
+  Object.assign(pats[0],{pay:'convenio',insurerId:i1.id,birth:'1988-04-12',sex:'F',mother:'Helena Costa',card:'0042 7781 9930',diag:'Lombalgia mecânica'});
+  Object.assign(pats[3],{birth:'1961-09-03',sex:'M',diag:'Pós-operatório de joelho direito'});
+  const appts=[];const ws=startOfWeek(new Date());
+  const plan=[[-7,'08:00',c1,0,i1],[-7,'09:40',c1,1,null],[-6,'08:00',c2,3,i2],[-6,'13:30',c2,4,i1],[-5,'14:00',pt,2,null],[-4,'09:30',c2,1,i1],[-3,'10:30',c1,5,i2],[-3,'15:00',pt,0,null],
+    [0,'08:00',c1,0,i1],[0,'09:40',c1,1,null],[0,'14:00',pt,2,null],[1,'08:00',c2,3,i2],[1,'13:30',c2,4,i1],[2,'10:30',c1,5,i2],[2,'15:00',pt,0,null],[3,'09:30',c2,1,i1],[4,'08:50',c1,2,i1],[4,'17:30',pt,3,null],[5,'09:00',pt,4,null]];
+  plan.forEach(([d,t,p,pi,ins],k)=>{const date=iso(addDays(ws,d));const past=date<todayISO();
+    appts.push({id:uid(),patientId:pats[pi].id,placeId:p.id,date,time:t,dur:p.duration,pay:ins?'convenio':'particular',insurerId:ins?.id||'',insName:ins?.name||'',price:ins?insPrice(ins,p.id):p.price,status:past?(k===3?'faltou':'concluido'):(d===0?'confirmado':'agendado'),paid:past&&!ins,notes:''})});
+  const mA=appts.find(x=>x.patientId===pats[0].id&&x.status==='concluido');
+  pats[0].records=[{id:uid(),date:mA.date,placeId:mA.placeId,apptId:mA.id,text:'Queixa / relato:\nDor lombar ao final do dia, nota 6/10.\n\nProcedimentos realizados:\nTENS, mobilização lombar, alongamento de cadeia posterior.\n\nEvolução:\nMelhora da amplitude de flexão. Dor 4/10 ao final.\n\nConduta / orientações:\nExercícios de estabilização em casa, 3x por semana.'}];
+  return{v:2,demo:true,profile:{name:'Você',title:''},places:[c1,c2,pt],patients:pats,appts,insurers:[i1,i2],exceptions:[{id:uid(),date:iso(addDays(ws,9)),placeId:'',type:'block',allDay:true,s:'',e:'',note:'Feriado'}],settings:{msg:DEFAULT_MSG}};
+}
+
+/* ---------- navegação ---------- */
+function go(tab){ui.tab=tab;render();window.scrollTo(0,0)}
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>go(b.dataset.tab));
+$('#fab').onclick=()=>{if(ui.tab==='horarios')editException(null);else editAppt(null,{date:ui.sel})};
+
+function render(){
+  if(!S){onboarding();return}
+  $('#tabs').hidden=false;
+  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on',b.dataset.tab===ui.tab));
+  $('#fab').hidden=!['agenda','pacientes','horarios'].includes(ui.tab);
+  $('#fabTxt').textContent=ui.tab==='horarios'?'Folga ou extra':'Agendar';
+  ({agenda:renderAgenda,pacientes:renderPatients,horarios:renderHours,relatorios:renderReports,ajustes:renderSettings})[ui.tab]();
+}
+
+/* ---------- agenda ---------- */
+function renderAgenda(){
+  const ws=parse(ui.week);const days=[...Array(7)].map((_,i)=>iso(addDays(ws,i)));
+  const we=addDays(ws,6);
+  const monthTxt=ws.getMonth()===we.getMonth()?`${MES[ws.getMonth()]} ${ws.getFullYear()}`:`${MES[ws.getMonth()].slice(0,3)} – ${MES[we.getMonth()].slice(0,3)} ${we.getFullYear()}`;
+  const list=apptsOn(ui.sel);
+  const free=freeSlots(ui.sel);
+  const items=[...list.map(a=>({k:'a',t:a.time,a})),...free.map(f=>({k:'f',t:f.time,f}))].sort((x,y)=>x.t.localeCompare(y.t)||(x.k==='a'?-1:1));
+  const act=list.filter(a=>a.status!=='cancelado');
+  const sel=parse(ui.sel);
+  const blocks=blocksOn(ui.sel);
+  app.innerHTML=`
+  ${backupDue()?`<button class="bkbar" id="bkBar"><span><b>Hora de salvar uma cópia</b><span class="small">${backupLabel()}. Leva 5 segundos.</span></span><span class="go">Salvar</span></button>`:''}
+  <div class="top"><div><h1>Olá, ${esc(S.profile.name.split(' ')[0])}</h1><div class="sub">${S.demo?'Você está vendo exemplos':(S.profile.title?esc(S.profile.title):'Sua agenda')}</div></div>
+    <button class="chipbtn" id="shareFree">Horários livres</button></div>
+  <div class="weeknav"><span class="m">${monthTxt}</span><div class="btns">
+    <button class="iconbtn" id="wPrev" aria-label="Semana anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <button class="chipbtn" id="wToday">Hoje</button>
+    <button class="iconbtn" id="wNext" aria-label="Próxima semana"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg></button></div></div>
+  <div class="week">${days.map(d=>{const dd=parse(d);const ap=S.appts.filter(a=>a.date===d&&a.status!=='cancelado');const pls=[...new Set(ap.map(a=>place(a.placeId)?.color).filter(Boolean))].slice(0,3);
+    return `<button class="day ${d===ui.sel?'sel':''} ${d===todayISO()?'today':''}" data-d="${d}"><span class="dw">${WD[dd.getDay()]}</span><span class="dn">${dd.getDate()}</span><span class="dots">${pls.map(c=>`<i style="background:${d===ui.sel?'var(--accent-ink)':`${cv(c)}`}"></i>`).join('')}</span></button>`}).join('')}</div>
+  <div class="dayhead"><h2>${ui.sel===todayISO()?'Hoje':cap(WDL[sel.getDay()])}, ${sel.getDate()} de ${MES[sel.getMonth()]}</h2><span class="muted small num">${act.length} ${act.length===1?'atendimento':'atendimentos'} · ${free.length} livres</span></div>
+  ${blocks.map(e=>`<div class="banner">${e.allDay?'Dia bloqueado':`Bloqueado ${e.s}–${e.e}`}${e.placeId?' em '+esc(place(e.placeId)?.name||''):''}${e.note?' · '+esc(e.note):''}</div>`).join('')}
+  <div class="list">${items.length?items.map(it=>it.k==='a'?apptCard(it.a):freeCard(it.f)).join(''):`<div class="empty"><b>Nenhum horário neste dia</b>Não há atendimento previsto para ${WDL[sel.getDay()]}. Toque em Agendar para marcar mesmo assim, ou ajuste na aba Horários.</div>`}</div>`;
+  app.querySelectorAll('.day').forEach(b=>b.onclick=()=>{ui.sel=b.dataset.d;render()});
+  $('#wPrev').onclick=()=>{ui.week=iso(addDays(ws,-7));ui.sel=ui.week;render()};
+  $('#wNext').onclick=()=>{ui.week=iso(addDays(ws,7));ui.sel=ui.week;render()};
+  $('#wToday').onclick=()=>{ui.week=iso(startOfWeek(new Date()));ui.sel=todayISO();render()};
+  $('#shareFree').onclick=shareFree;
+  if($('#bkBar'))$('#bkBar').onclick=backupSheet;
+  app.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>viewAppt(b.dataset.a));
+  app.querySelectorAll('[data-free]').forEach(b=>b.onclick=()=>{const[t,p]=b.dataset.free.split('|');editAppt(null,{date:ui.sel,time:t,placeId:p})});
+}
+function apptCard(a){
+  const p=patient(a.patientId),pl=place(a.placeId);
+  const end=toHM(toMin(a.time)+(+a.dur||50));
+  return `<button class="appt ${a.status==='cancelado'?'dim':''}" data-a="${a.id}" style="--pc:${cv(pl?.color||'p1')}">
+    <span class="t">${a.time}<small>${end}</small></span>
+    <span style="min-width:0"><span class="who" style="display:block">${esc(p?.name||'Paciente')}</span><span class="where"><i></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(pl?.name||'—')}${pl&&pl.name.toLowerCase()===payName(a).toLowerCase()?'':' · '+esc(payName(a))}</span></span></span>
+    <span class="pill st-${a.status}">${STATUS[a.status]}</span></button>`;
+}
+function freeCard(f){const pl=place(f.placeId);
+  return `<button class="free" data-free="${f.time}|${f.placeId}"><span class="t">${f.time}</span><span class="small" style="display:flex;align-items:center;gap:6px;min-width:0"><span class="swatch" style="width:8px;height:8px;background:${cv(pl.color)}"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Livre · ${esc(pl.name)}</span></span><span class="plus">+ Marcar</span></button>`}
+
+function shareFree(){
+  const ws=parse(ui.week);
+  const build=(placeId)=>{
+    let out=[];
+    for(let i=0;i<7;i++){const d=iso(addDays(ws,i));if(d<todayISO())continue;const fs=freeSlots(d,placeId||null);if(!fs.length)continue;
+      const dd=parse(d);out.push(`*${cap(WDL[dd.getDay()])} ${dd.getDate()}/${pad(dd.getMonth()+1)}*`);
+      if(placeId){out.push(fs.map(f=>f.time).join(' · '))}
+      else{const by={};fs.forEach(f=>(by[f.placeId]=by[f.placeId]||[]).push(f.time));for(const k in by)out.push(`${place(k).name}: ${by[k].join(' · ')}`)}
+      out.push('');
+    }
+    if(!out.length)return 'Sem horários livres nesta semana.';
+    return `Horários disponíveis${placeId?' em '+place(placeId).name:''} nesta semana:\n\n`+out.join('\n').trim();
+  };
+  let pid='';
+  openSheet('Horários livres da semana',`
+    <p class="muted small" style="margin:0">Copie e cole no WhatsApp para quem pedir horário.</p>
+    <div class="seg solid" id="fsSeg"><button data-v="">Todos</button>${S.places.map(p=>`<button data-v="${p.id}">${esc(p.name)}</button>`).join('')}</div>
+    <pre class="share" id="fsText"></pre>
+    <button class="btn primary block" id="fsCopy">Copiar texto</button>`,b=>{
+    const seg=b.querySelector('#fsSeg');
+    const upd=()=>{b.querySelector('#fsText').textContent=build(pid);segSelect(seg,pid)};
+    seg.querySelectorAll('button').forEach(x=>x.onclick=()=>{pid=x.dataset.v;upd()});
+    b.querySelector('#fsCopy').onclick=()=>copy(b.querySelector('#fsText').textContent);
+    upd();
+  });
+}
+
+function viewAppt(id){
+  const a=S.appts.find(x=>x.id===id);if(!a)return;
+  const p=patient(a.patientId),pl=place(a.placeId);
+  const d=parse(a.date);
+  openSheet(p?.name||'Atendimento',`
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+        <div><div class="num" style="font-family:var(--display);font-size:24px;font-weight:700">${a.time} – ${toHM(toMin(a.time)+(+a.dur||50))}</div>
+        <div class="muted">${cap(WDL[d.getDay()])}, ${d.getDate()} de ${MES[d.getMonth()]}</div></div>
+        <span class="pill st-${a.status}">${STATUS[a.status]}</span></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:12px"><span class="swatch" style="background:${cv(pl?.color)}"></span><b>${esc(pl?.name||'—')}</b></div>
+      ${pl?.address?`<div class="small muted" style="margin-top:2px">${esc(pl.address)}</div>`:''}
+      <div style="display:flex;justify-content:space-between;margin-top:12px;gap:10px" class="small"><span class="muted">Pagamento</span><span class="pay ${a.pay==='convenio'?'conv':''}">${esc(payName(a))}</span></div>
+      <div style="display:flex;justify-content:space-between;margin-top:6px" class="small"><span class="muted">${a.pay==='convenio'?'Valor do repasse':'Valor'}</span><b class="num">${money(a.price)}${a.paid?' · recebido':''}</b></div>
+      ${p?.phone?`<div style="display:flex;justify-content:space-between;margin-top:6px" class="small"><span class="muted">WhatsApp</span><b class="num" style="user-select:all">${esc(fmtPhone(p.phone))}</b></div>`:''}
+      ${a.notes?`<div class="small" style="margin-top:10px;white-space:pre-wrap">${esc(a.notes)}</div>`:''}
+    </div>
+    ${p?.phone&&a.status!=='cancelado'&&a.status!=='concluido'?`<div class="field"><span>Mensagem para o paciente (pode editar antes de enviar)</span><textarea class="input" id="waMsg" style="min-height:110px">${esc(fillMsg(a))}</textarea></div><a id="waBtn" class="btn wa block" href="${waLink(p.phone,fillMsg(a))}" target="_blank" rel="noopener" style="text-decoration:none"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.5-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 2c.1.2.1.4 0 .5l-.4.6-.4.4c-.1.1-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.9-1.1c.2-.3.4-.2.7-.1l1.9.9c.3.1.5.2.5.3.1.2.1.7-.1 1.1Z"/></svg>Enviar confirmação no WhatsApp</a>`:''}
+    <div><div class="label" style="margin-bottom:8px">Marcar como</div>
+    <div class="seg" id="stSeg">${Object.keys(STATUS).map(k=>`<button data-s="${k}" class="${a.status===k?'on st-'+k:''}">${STATUS[k]}</button>`).join('')}</div></div>
+    <label class="toggle"><span>${a.pay==='convenio'?'Repasse recebido da clínica/convênio':'Pagamento recebido'}</span><input type="checkbox" id="paid" ${a.paid?'checked':''}></label>
+    <div class="btnrow"><button class="btn soft" id="evo">${(p?.records||[]).some(r=>r.apptId===a.id)?'Ver evolução':'Registrar evolução'}</button><button class="btn ghost" id="pProf">Perfil do paciente</button></div>
+    <div class="btnrow"><button class="btn soft" id="edit">Editar ou remarcar</button><button class="btn ghost" id="again">Agendar retorno</button></div>
+    <button class="btn danger block" id="del">Excluir atendimento</button>`,b=>{
+    b.querySelectorAll('#stSeg button').forEach(x=>x.onclick=()=>{a.status=x.dataset.s;save();render();viewAppt(id);toast('Marcado como '+STATUS[a.status].toLowerCase())});
+    b.querySelector('#paid').onchange=e=>{a.paid=e.target.checked;save();render()};
+    const wm=b.querySelector('#waMsg');if(wm)wm.oninput=()=>{b.querySelector('#waBtn').href=waLink(p.phone,wm.value)};
+    b.querySelector('#edit').onclick=()=>editAppt(id);
+    b.querySelector('#evo').onclick=()=>{const r=(p?.records||[]).find(r=>r.apptId===a.id);editRecord(a.patientId,r?.id||null,{apptId:a.id,date:a.date,placeId:a.placeId})};
+    b.querySelector('#pProf').onclick=()=>viewPatient(a.patientId);
+    b.querySelector('#again').onclick=()=>editAppt(null,{patientId:a.patientId,placeId:a.placeId,date:iso(addDays(parse(a.date),7)),time:a.time,pay:a.pay,insurerId:a.insurerId});
+    twoTap(b.querySelector('#del'),'Excluir atendimento','Toque de novo para excluir',()=>{S.appts=S.appts.filter(x=>x.id!==id);save();closeSheet();render();toast('Atendimento excluído')});
+  });
+}
+
+function editAppt(id,pre={}){
+  if(!S.places.length){toast('Cadastre um local em Ajustes');go('ajustes');return}
+  const a=id?{...S.appts.find(x=>x.id===id)}:{id:null,patientId:pre.patientId||'',placeId:pre.placeId||S.places[0].id,date:pre.date||ui.sel,time:pre.time||'',dur:0,price:null,pay:pre.pay||'',insurerId:pre.insurerId||'',status:'agendado',paid:false,notes:''};
+  const p0=a.patientId?patient(a.patientId):null;
+  if(!id&&!a.pay){a.pay=p0?.pay||(place(a.placeId).kind==='particular'?'particular':(S.insurers.length?'convenio':'particular'));a.insurerId=a.insurerId||p0?.insurerId||''}
+  openSheet(id?'Editar atendimento':'Novo atendimento',`
+    <label class="field"><span>Paciente</span><input class="input" id="fName" list="patList" value="${esc(p0?.name||'')}" placeholder="Nome do paciente" autocomplete="off"></label>
+    <datalist id="patList">${S.patients.map(p=>`<option value="${esc(p.name)}"></option>`).join('')}</datalist>
+    <label class="field"><span>WhatsApp</span><input class="input" id="fPhone" type="tel" inputmode="tel" value="${esc(fmtPhone(p0?.phone||''))}" placeholder="(22) 99999-9999"></label>
+    <div class="field"><span>Local</span><div class="seg" id="fPlace">${S.places.map(p=>`<button data-v="${p.id}"><span class="swatch" style="display:inline-block;width:9px;height:9px;background:${cv(p.color)};margin-right:6px;vertical-align:1px"></span>${esc(p.name)}</button>`).join('')}</div></div>
+    <div class="two"><label class="field"><span>Data</span><input class="input" id="fDate" type="date" value="${a.date}"></label>
+    <label class="field"><span>Horário</span><input class="input" id="fTime" type="time" value="${a.time}" step="300"></label></div>
+    <div class="field"><span id="slotLbl">Horários livres</span><div class="slots" id="fSlots"></div></div>
+    <div class="field"><span>Pagamento</span><div class="seg solid" id="fPay"><button data-v="particular">Particular</button><button data-v="convenio">Convênio</button></div></div>
+    <div class="field" id="insBox"><span>Qual convênio</span><select class="input" id="fIns"></select>
+      <div id="newIns" hidden style="display:flex;flex-direction:column;gap:8px">
+        <div class="two"><input class="input" id="niName" placeholder="Nome do convênio"><input class="input num" id="niPrice" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Repasse R$"></div>
+        <span class="small muted" style="font-weight:400">O valor é o que você recebe por sessão. Dá para ter valores diferentes por clínica em Ajustes › Convênios.</span></div></div>
+    <div class="two"><label class="field"><span>Duração (min)</span><input class="input num" id="fDur" type="number" inputmode="numeric" min="5" step="5"></label>
+    <label class="field"><span id="priceLbl">Valor (R$)</span><input class="input num" id="fPrice" type="number" inputmode="decimal" min="0" step="0.01"></label></div>
+    ${id?'':`<label class="field"><span>Repetir toda semana</span><select class="input" id="fRep"><option value="1">Não repetir</option>${[2,3,4,6,8,10,12].map(n=>`<option value="${n}">${n} semanas seguidas</option>`).join('')}</select></label>`}
+    <label class="field"><span>Observações</span><textarea class="input" id="fNotes" placeholder="Opcional">${esc(a.notes||'')}</textarea></label>
+    <div id="fWarn"></div>
+    <button class="btn primary block" id="fSave">${id?'Salvar alterações':'Agendar'}</button>`,b=>{
+    const $b=s=>b.querySelector(s);
+    let placeId=a.placeId,pay=a.pay,insId=a.insurerId;let durTouched=!!id,priceTouched=!!id;
+    const fillIns=()=>{$b('#fIns').innerHTML=`<option value="">Escolha o convênio</option>${S.insurers.map(i=>`<option value="${i.id}" ${i.id===insId?'selected':''}>${esc(i.name)}</option>`).join('')}<option value="__new">+ Cadastrar novo convênio</option>`;
+      $b('#newIns').hidden=$b('#fIns').value!=='__new'};
+    const autoPrice=()=>{if(priceTouched)return;const pl=place(placeId);
+      $b('#fPrice').value=pay==='convenio'?(insId&&insId!=='__new'?insPrice(insurer(insId),placeId)||'':($b('#niPrice').value||'')):(pl.price||'')};
+    const setPay=v=>{pay=v;segSelect($b('#fPay'),v);$b('#insBox').hidden=v!=='convenio';$b('#priceLbl').textContent=v==='convenio'?'Repasse por sessão (R$)':'Valor (R$)';autoPrice()};
+    const setPlace=pid=>{placeId=pid;const pl=place(pid);segSelect($b('#fPlace'),pid);
+      if(!durTouched)$b('#fDur').value=pl.duration||50;autoPrice();slots()};
+    const slots=()=>{const d=$b('#fDate').value;if(!d){$b('#fSlots').innerHTML='';return}
+      const fs=freeSlots(d,placeId,id);const t=$b('#fTime').value;
+      $b('#slotLbl').textContent=`Horários livres em ${place(placeId).name}`;
+      $b('#fSlots').innerHTML=fs.length?fs.map(f=>`<button type="button" class="slot ${f.time===t?'on':''}" data-t="${f.time}">${f.time}</button>`).join(''):`<span class="small muted">Nenhum horário livre neste dia. Você pode digitar um horário acima.</span>`;
+      b.querySelectorAll('.slot').forEach(s=>s.onclick=()=>{$b('#fTime').value=s.dataset.t;slots()});warn()};
+    const warn=()=>{const d=$b('#fDate').value,t=$b('#fTime').value;const c=d&&t&&conflict(d,t,$b('#fDur').value,id);
+      $b('#fWarn').innerHTML=c?`<div class="notice">Atenção: esse horário bate com ${esc(patient(c.patientId)?.name||'outro atendimento')} às ${c.time} (${esc(place(c.placeId)?.name||'')}).</div>`:''};
+    $b('#fDur').value=a.dur||'';$b('#fPrice').value=a.price??'';
+    fillIns();
+    b.querySelectorAll('#fPlace button').forEach(x=>x.onclick=()=>setPlace(x.dataset.v));
+    b.querySelectorAll('#fPay button').forEach(x=>x.onclick=()=>setPay(x.dataset.v));
+    $b('#fIns').onchange=()=>{insId=$b('#fIns').value;$b('#newIns').hidden=insId!=='__new';if(insId==='__new')$b('#niName').focus();autoPrice()};
+    $b('#niPrice').oninput=autoPrice;
+    setPlace(placeId);setPay(pay);
+    $b('#fDate').onchange=slots;$b('#fTime').oninput=slots;
+    $b('#fDur').oninput=()=>{durTouched=true;warn()};$b('#fPrice').oninput=()=>priceTouched=true;
+    $b('#fName').oninput=()=>{const m=S.patients.find(p=>p.name.toLowerCase()===$b('#fName').value.trim().toLowerCase());if(!m)return;
+      if(m.phone&&!digits($b('#fPhone').value))$b('#fPhone').value=fmtPhone(m.phone);
+      if(!id&&m.pay){insId=m.insurerId||'';fillIns();setPay(m.pay)}};
+    $b('#fSave').onclick=()=>{
+      const name=$b('#fName').value.trim(),date=$b('#fDate').value,time=$b('#fTime').value;
+      if(!name){toast('Escreva o nome do paciente');$b('#fName').focus();return}
+      if(!date||!time){toast('Escolha data e horário');return}
+      let ins=null;
+      if(pay==='convenio'){
+        if(insId==='__new'){const n=$b('#niName').value.trim();if(!n){toast('Escreva o nome do convênio');$b('#niName').focus();return}
+          ins=S.insurers.find(i=>i.name.toLowerCase()===n.toLowerCase());
+          if(!ins){ins={id:uid(),name:n,price:+$b('#niPrice').value||0,prices:{}};S.insurers.push(ins)}}
+        else{ins=insurer(insId);if(!ins){toast('Escolha o convênio');return}}
+      }
+      let p=S.patients.find(x=>x.name.toLowerCase()===name.toLowerCase());
+      const phone=digits($b('#fPhone').value);
+      if(!p){p={id:uid(),name,phone,notes:''};S.patients.push(p)}else if(phone)p.phone=phone;
+      p.pay=pay;p.insurerId=ins?.id||'';
+      const base={patientId:p.id,placeId,time,dur:+$b('#fDur').value||place(placeId).duration||50,price:+$b('#fPrice').value||0,pay,insurerId:ins?.id||'',insName:ins?.name||'',notes:$b('#fNotes').value.trim()};
+      if(id){Object.assign(S.appts.find(x=>x.id===id),base,{date})}
+      else{const rep=+($b('#fRep')?.value||1);for(let i=0;i<rep;i++)S.appts.push({id:uid(),...base,date:iso(addDays(parse(date),7*i)),status:'agendado',paid:false})}
+      save();ui.sel=date;ui.week=iso(startOfWeek(parse(date)));ui.tab='agenda';
+      closeSheet();render();toast(id?'Alterações salvas':'Atendimento agendado');
+    };
+  });
+}
+
+/* ---------- pacientes ---------- */
+function renderPatients(){
+  const q=ui.q.trim().toLowerCase();
+  const list=S.patients.filter(p=>!q||p.name.toLowerCase().includes(q)||(digits(q)&&digits(p.phone).includes(digits(q)))).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
+  const next=pid=>S.appts.filter(a=>a.patientId===pid&&a.status!=='cancelado'&&a.date>=todayISO()).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time))[0];
+  app.innerHTML=`<div class="top"><div><h1>Pacientes</h1><div class="sub num">${S.patients.length} cadastrados</div></div></div>
+  <input class="search" id="q" type="search" placeholder="Buscar por nome ou telefone" value="${esc(ui.q)}">
+  <div class="section">${list.length?`<div class="rows">${list.map(p=>{const n=next(p.id);const ins=p.pay==='convenio'?insurer(p.insurerId)?.name:'';return `<button class="row" data-p="${p.id}"><span class="avatar">${esc(initials(p.name))}</span><span class="grow"><b>${esc(p.name)}</b><span class="small muted">${n?`Próximo: ${dayLabel(n.date)} às ${n.time}`:(p.phone?esc(fmtPhone(p.phone)):'Sem telefone')}${ageOf(p.birth)!==null?' · '+ageOf(p.birth)+' anos':''}${ins?' · '+esc(ins):''}</span></span><span class="chev">›</span></button>`}).join('')}</div>`:`<div class="empty"><b>${q?'Ninguém encontrado':'Nenhum paciente ainda'}</b>${q?'Tente outro nome.':'Os pacientes aparecem aqui quando você agenda o primeiro atendimento.'}</div>`}</div>`;
+  const qi=$('#q');qi.oninput=()=>{ui.q=qi.value;const pos=qi.selectionStart;renderPatients();const n=$('#q');n.focus();n.setSelectionRange(pos,pos)};
+  app.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>viewPatient(b.dataset.p));
+}
+const SEX={F:'Feminino',M:'Masculino',O:'Outro'};
+function ageOf(b){if(!b)return null;const d=parse(b),n=new Date();let a=n.getFullYear()-d.getFullYear();if(n.getMonth()<d.getMonth()||(n.getMonth()===d.getMonth()&&n.getDate()<d.getDate()))a--;return a>=0&&a<130?a:null}
+const brDate=s=>s?parse(s).toLocaleDateString('pt-BR'):'';
+const RECORD_TEMPLATE='Queixa / relato:\n\nProcedimentos realizados:\n\nEvolução:\n\nConduta / orientações:\n';
+function patientSubtitle(p){const a=ageOf(p.birth);return [a!==null?a+' anos':'',SEX[p.sex]||'',p.pay==='convenio'?(insurer(p.insurerId)?.name||''):'Particular'].filter(Boolean).join(' · ')}
+
+function viewPatient(id,tab='perfil'){
+  const p=patient(id);if(!p)return;
+  p.records=p.records||[];
+  openSheet(p.name,'',b=>{
+    sheet.classList.add('tall');
+    const draw=()=>{
+      const hist=S.appts.filter(a=>a.patientId===id).sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
+      const done=hist.filter(a=>a.status==='concluido');const owed=done.filter(a=>!a.paid).reduce((s,a)=>s+(+a.price||0),0);
+      const recs=[...p.records].sort((a,b)=>b.date.localeCompare(a.date));
+      let body='';
+      if(tab==='perfil')body=`
+        <label class="field"><span>Nome completo</span><input class="input" id="pName" value="${esc(p.name)}"></label>
+        <div class="two"><label class="field"><span>Data de nascimento</span><input class="input" id="pBirth" type="date" value="${p.birth||''}"></label>
+          <div class="field"><span>Idade</span><div class="input num" id="pAge" style="display:flex;align-items:center;color:var(--muted)">${ageOf(p.birth)!==null?ageOf(p.birth)+' anos':'—'}</div></div></div>
+        <div class="field"><span>Sexo</span><div class="seg" id="pSex"><button data-v="F">Feminino</button><button data-v="M">Masculino</button><button data-v="O">Outro</button><button data-v="">Não informar</button></div></div>
+        <label class="field"><span>WhatsApp</span><input class="input" id="pPhone" type="tel" inputmode="tel" value="${esc(fmtPhone(p.phone))}"></label>
+        <label class="field"><span>Nome da mãe (opcional)</span><input class="input" id="pMother" value="${esc(p.mother||'')}"></label>
+        <label class="field"><span>Nome do pai (opcional)</span><input class="input" id="pFather" value="${esc(p.father||'')}"></label>
+        <div class="two"><label class="field"><span>Convênio padrão</span><select class="input" id="pIns"><option value="">Particular</option>${S.insurers.map(i=>`<option value="${i.id}" ${p.pay==='convenio'&&p.insurerId===i.id?'selected':''}>${esc(i.name)}</option>`).join('')}</select></label>
+          <label class="field"><span>Nº da carteirinha</span><input class="input num" id="pCard" value="${esc(p.card||'')}" inputmode="numeric"></label></div>
+        <label class="field"><span>Motivo do atendimento / diagnóstico</span><textarea class="input" id="pDiag" placeholder="Ex.: lombalgia crônica, pós-operatório de joelho">${esc(p.diag||'')}</textarea></label>
+        <label class="field"><span>Observações</span><textarea class="input" id="pNotes" placeholder="Ex.: alergias, preferências de horário, contato de responsável">${esc(p.notes||'')}</textarea></label>
+        <button class="btn primary block" id="pSave">Salvar perfil</button>
+        <button class="btn danger block" id="pDel">Excluir paciente</button>`;
+      if(tab==='prontuario')body=`
+        <button class="btn primary block" id="rNew">+ Nova evolução</button>
+        ${recs.length?recs.map(r=>{const pl=place(r.placeId);return `<button class="card rec" data-r="${r.id}" style="text-align:left;border:0;width:100%;display:flex;flex-direction:column;gap:6px">
+          <span style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b class="num">${brDate(r.date)}</b>${pl?`<span class="small muted" style="display:flex;align-items:center;gap:6px"><span class="swatch" style="width:8px;height:8px;background:${cv(pl.color)}"></span>${esc(pl.name)}</span>`:''}</span>
+          <span class="small" style="white-space:pre-wrap;max-height:7.5em;overflow:hidden">${esc(r.text)}</span></button>`}).join(''):'<div class="empty"><b>Prontuário vazio</b>Registre a evolução de cada sessão. Também dá para registrar direto pelo atendimento na agenda.</div>'}`;
+      if(tab==='atend')body=`
+        <div class="stats"><div class="stat"><div class="label">Atendimentos</div><div class="v">${done.length}</div></div><div class="stat"><div class="label">A receber</div><div class="v sm">${money(owed)}</div></div></div>
+        <button class="btn soft block" id="pNew">Agendar atendimento</button>
+        ${hist.length?`<div class="rows">${hist.slice(0,60).map(a=>{const pl=place(a.placeId);return `<button class="row" data-a="${a.id}"><span class="swatch" style="background:${cv(pl?.color)}"></span><span class="grow"><b class="num">${brDate(a.date)} · ${a.time}</b><span class="small muted">${esc(pl?.name||'')} · ${esc(payName(a))}</span></span><span class="pill st-${a.status}">${STATUS[a.status]}</span></button>`}).join('')}</div>`:'<div class="small muted">Sem atendimentos.</div>'}`;
+      if(tab==='relatorio'){const m=todayISO().slice(0,8)+'01';body=`
+        <div class="small muted">Gere um relatório deste paciente para apresentar na clínica ou ao convênio.</div>
+        <div class="two"><label class="field"><span>De</span><input class="input" id="rFrom" type="date" value="${ui.prFrom||m}"></label><label class="field"><span>Até</span><input class="input" id="rTo" type="date" value="${ui.prTo||todayISO()}"></label></div>
+        <label class="field"><span>Local</span><select class="input" id="rPlace"><option value="">Todos os locais</option>${S.places.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>
+        <label class="toggle"><span>Incluir as evoluções do prontuário</span><input type="checkbox" id="rEv" checked></label>
+        <pre class="share" id="rOut"></pre>
+        <div class="btnrow"><button class="btn primary" id="rCopyP">Copiar texto</button><button class="btn ghost" id="rPrint">Imprimir ou PDF</button></div>`}
+      b.innerHTML=`
+        <div style="display:flex;align-items:center;gap:12px"><span class="avatar" style="width:48px;height:48px;font-size:17px">${esc(initials(p.name))}</span>
+          <div style="min-width:0;flex:1"><div class="small muted">${esc(patientSubtitle(p))||'Perfil do paciente'}</div>${p.phone?`<div class="num small" style="font-weight:600">${esc(fmtPhone(p.phone))}</div>`:''}</div>
+          ${p.phone?`<a class="btn wa" style="min-height:42px;padding:0 14px;text-decoration:none;font-size:14px" href="${waLink(p.phone,'Olá, '+p.name.split(' ')[0]+'!')}" target="_blank" rel="noopener">WhatsApp</a>`:''}</div>
+        <div class="seg solid" id="pTabs"><button data-v="perfil">Perfil</button><button data-v="prontuario">Prontuário</button><button data-v="atend">Sessões</button><button data-v="relatorio">Relatório</button></div>
+        ${body}`;
+      segSelect(b.querySelector('#pTabs'),tab);
+      b.querySelectorAll('#pTabs button').forEach(x=>x.onclick=()=>{tab=x.dataset.v;draw();b.scrollTop=0});
+      const $b=s=>b.querySelector(s);
+      if(tab==='perfil'){
+        let sex=p.sex||'';segSelect($b('#pSex'),sex);
+        b.querySelectorAll('#pSex button').forEach(x=>x.onclick=()=>{sex=x.dataset.v;segSelect($b('#pSex'),sex)});
+        $b('#pBirth').onchange=()=>{const a=ageOf($b('#pBirth').value);$b('#pAge').textContent=a!==null?a+' anos':'—'};
+        $b('#pSave').onclick=()=>{const n=$b('#pName').value.trim();if(!n){toast('O nome não pode ficar vazio');return}
+          Object.assign(p,{name:n,birth:$b('#pBirth').value,sex,phone:digits($b('#pPhone').value),mother:$b('#pMother').value.trim(),father:$b('#pFather').value.trim(),card:$b('#pCard').value.trim(),diag:$b('#pDiag').value.trim(),notes:$b('#pNotes').value.trim()});
+          const iv=$b('#pIns').value;p.pay=iv?'convenio':'particular';p.insurerId=iv;
+          save();render();$('#sheetTitle').textContent=p.name;draw();toast('Perfil salvo')};
+        const nh=S.appts.filter(a=>a.patientId===id).length;
+        twoTap($b('#pDel'),'Excluir paciente',nh?`Apaga também ${nh} atendimentos e o prontuário. Toque de novo`:'Toque de novo para excluir',()=>{
+          S.appts=S.appts.filter(a=>a.patientId!==id);S.patients=S.patients.filter(x=>x.id!==id);save();closeSheet();render();toast('Paciente excluído')});
+      }
+      if(tab==='prontuario'){
+        $b('#rNew').onclick=()=>editRecord(id,null);
+        b.querySelectorAll('[data-r]').forEach(x=>x.onclick=()=>editRecord(id,x.dataset.r));
+      }
+      if(tab==='atend'){
+        $b('#pNew').onclick=()=>editAppt(null,{patientId:id,date:ui.sel});
+        b.querySelectorAll('[data-a]').forEach(x=>x.onclick=()=>viewAppt(x.dataset.a));
+      }
+      if(tab==='relatorio'){
+        const upd=()=>{ui.prFrom=$b('#rFrom').value;ui.prTo=$b('#rTo').value;
+          $b('#rOut').textContent=patientReport(p,{from:ui.prFrom,to:ui.prTo,placeId:$b('#rPlace').value,ev:$b('#rEv').checked}).text};
+        ['#rFrom','#rTo','#rPlace','#rEv'].forEach(s=>$b(s).onchange=upd);upd();
+        $b('#rCopyP').onclick=()=>copy($b('#rOut').textContent);
+        $b('#rPrint').onclick=()=>{const r=patientReport(p,{from:$b('#rFrom').value,to:$b('#rTo').value,placeId:$b('#rPlace').value,ev:$b('#rEv').checked});printDoc('Relatório – '+p.name,r.html)};
+      }
+    };
+    draw();
+  });
+}
+
+function editRecord(patientId,recId,pre={}){
+  const p=patient(patientId);p.records=p.records||[];
+  const orig=recId?p.records.find(r=>r.id===recId):null;
+  const r=orig?{...orig}:{id:uid(),date:pre.date||todayISO(),placeId:pre.placeId||'',apptId:pre.apptId||'',text:''};
+  const appts=S.appts.filter(a=>a.patientId===patientId&&a.status!=='cancelado').sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time)).slice(0,40);
+  openSheet(orig?'Editar evolução':'Nova evolução',`
+    <div class="small muted">${esc(p.name)}</div>
+    <label class="field"><span>Atendimento</span><select class="input" id="eAppt"><option value="">Sem vínculo com atendimento</option>${appts.map(a=>`<option value="${a.id}" ${a.id===r.apptId?'selected':''}>${brDate(a.date)} ${a.time} · ${esc(place(a.placeId)?.name||'')}</option>`).join('')}</select></label>
+    <div class="two"><label class="field"><span>Data</span><input class="input" id="eDate" type="date" value="${r.date}"></label>
+      <label class="field"><span>Local</span><select class="input" id="ePlace"><option value="">—</option>${S.places.map(x=>`<option value="${x.id}" ${x.id===r.placeId?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label></div>
+    <label class="field"><span>Evolução / anotações da sessão</span><textarea class="input" id="eText" style="min-height:220px">${esc(r.text)}</textarea></label>
+    ${r.text?'':'<button class="link" id="eTpl">Inserir modelo (queixa, procedimentos, evolução, conduta)</button>'}
+    <button class="btn primary block" id="eSave">Salvar no prontuário</button>
+    ${orig?'<button class="btn danger block" id="eDel">Excluir evolução</button>':''}`,b=>{
+    const $b=s=>b.querySelector(s);
+    $b('#eAppt').onchange=()=>{const a=S.appts.find(x=>x.id===$b('#eAppt').value);if(a){$b('#eDate').value=a.date;$b('#ePlace').value=a.placeId}};
+    if($b('#eTpl'))$b('#eTpl').onclick=()=>{const t=$b('#eText');t.value=RECORD_TEMPLATE+(t.value?'\n'+t.value:'');t.focus();$b('#eTpl').remove()};
+    $b('#eSave').onclick=()=>{const text=$b('#eText').value.trim();if(!text){toast('Escreva a evolução');return}
+      Object.assign(r,{apptId:$b('#eAppt').value,date:$b('#eDate').value||todayISO(),placeId:$b('#ePlace').value,text});
+      if(orig)Object.assign(orig,r);else p.records.push(r);
+      save();render();toast('Evolução salva');viewPatient(patientId,'prontuario')};
+    const del=$b('#eDel');if(del)twoTap(del,'Excluir evolução','Toque de novo para excluir',()=>{p.records=p.records.filter(x=>x.id!==recId);save();toast('Evolução excluída');viewPatient(patientId,'prontuario')});
+  });
+}
+
+function patientReport(p,{from,to,placeId,ev}){
+  const inR=d=>(!from||d>=from)&&(!to||d<=to);
+  const ap=S.appts.filter(a=>a.patientId===p.id&&inR(a.date)&&(!placeId||a.placeId===placeId)).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+  const done=ap.filter(a=>a.status==='concluido'),miss=ap.filter(a=>a.status==='faltou');
+  const recs=(p.records||[]).filter(r=>inR(r.date)&&(!placeId||!r.placeId||r.placeId===placeId)).sort((a,b)=>a.date.localeCompare(b.date));
+  const age=ageOf(p.birth);const pl=placeId?place(placeId):null;
+  const used=[...new Set(ap.filter(a=>a.status!=='cancelado').map(payName))];const conv=used.length?used.join(', '):(p.pay==='convenio'?(insurer(p.insurerId)?.name||''):'Particular');
+  const info=[['Paciente',p.name],['Data de nascimento',p.birth?brDate(p.birth)+(age!==null?` (${age} anos)`:''):''],['Sexo',SEX[p.sex]||''],['Nome da mãe',p.mother],['Nome do pai',p.father],['Convênio',conv],['Carteirinha',p.card],['Telefone',fmtPhone(p.phone)],['Motivo / diagnóstico',p.diag]].filter(x=>x[1]);
+  const per=`${from?brDate(from):'início'} a ${to?brDate(to):'hoje'}${pl?' · '+pl.name:''}`;
+  const L=['RELATÓRIO DE ATENDIMENTO','',...info.map(([k,v])=>`${k}: ${v}`),'',`Período: ${per}`,`Sessões realizadas: ${done.length}${done.length?' ('+done.map(a=>fmtDate(a.date)).join(', ')+')':''}`];
+  if(miss.length)L.push(`Faltas: ${miss.length} (${miss.map(a=>fmtDate(a.date)).join(', ')})`);
+  if(ev){L.push('','EVOLUÇÕES');if(!recs.length)L.push('Nenhuma evolução registrada no período.');recs.forEach(r=>{L.push('',`${brDate(r.date)}${r.placeId&&place(r.placeId)?' – '+place(r.placeId).name:''}`,r.text)})}
+  L.push('',`${S.profile.name}${S.profile.title?' – '+S.profile.title:''}`,`Emitido em ${brDate(todayISO())}`);
+  const html=`<h1>Relatório de atendimento</h1><table class="kv">${info.map(([k,v])=>`<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}<tr><th>Período</th><td>${esc(per)}</td></tr><tr><th>Sessões realizadas</th><td>${done.length}${done.length?' – '+done.map(a=>fmtDate(a.date)).join(', '):''}</td></tr>${miss.length?`<tr><th>Faltas</th><td>${miss.length} – ${miss.map(a=>fmtDate(a.date)).join(', ')}</td></tr>`:''}</table>
+    ${ev?`<h2>Evoluções</h2>${recs.length?recs.map(r=>`<div class="ev"><b>${brDate(r.date)}${r.placeId&&place(r.placeId)?' – '+esc(place(r.placeId).name):''}</b><p>${esc(r.text)}</p></div>`).join(''):'<p>Nenhuma evolução registrada no período.</p>'}`:''}
+    <div class="sign"><div class="line"></div>${esc(S.profile.name)}${S.profile.title?'<br>'+esc(S.profile.title):''}<br><small>Emitido em ${brDate(todayISO())}</small></div>`;
+  return{text:L.join('\n'),html};
+}
+
+function clinicReport(placeId,R){
+  const pl=place(placeId);
+  const ap=R.inP.filter(a=>a.placeId===placeId&&(a.status==='concluido'||a.status==='faltou'));
+  const byP=new Map();ap.forEach(a=>{if(!byP.has(a.patientId))byP.set(a.patientId,[]);byP.get(a.patientId).push(a)});
+  const rows=[...byP.entries()].map(([pid,l])=>{const p=patient(pid)||{name:'Paciente',records:[]};const done=l.filter(a=>a.status==='concluido'),miss=l.filter(a=>a.status==='faltou');
+    const recs=(p.records||[]).filter(r=>r.date>=R.pr.start&&r.date<=R.pr.end&&(!r.placeId||r.placeId===placeId)).sort((a,b)=>b.date.localeCompare(a.date));
+    return{p,done,miss,pay:payName(l[0]),last:recs[0]}}).sort((a,b)=>a.p.name.localeCompare(b.p.name,'pt-BR'));
+  const L=[`RELATÓRIO DE PACIENTES – ${pl.name.toUpperCase()}`,`Período: ${brDate(R.pr.start)} a ${brDate(R.pr.end)}`,`Profissional: ${S.profile.name}${S.profile.title?' – '+S.profile.title:''}`,`Pacientes: ${rows.length} · Sessões realizadas: ${rows.reduce((s,r)=>s+r.done.length,0)}`];
+  rows.forEach(r=>{const a=ageOf(r.p.birth);L.push('',`• ${r.p.name}${a!==null?` (${a} anos)`:''} – ${r.pay}${r.p.card?' · carteirinha '+r.p.card:''}`,`  Sessões: ${r.done.length}${r.done.length?' ('+r.done.map(x=>fmtDate(x.date)).join(', ')+')':''}${r.miss.length?` · Faltas: ${r.miss.length}`:''}`);
+    if(r.p.diag)L.push(`  Motivo: ${r.p.diag}`);if(r.last)L.push(`  Última evolução (${fmtDate(r.last.date)}): ${r.last.text.replace(/\s*\n\s*/g,' ').slice(0,280)}`)});
+  const html=`<h1>Relatório de pacientes – ${esc(pl.name)}</h1><p class="meta">Período: ${brDate(R.pr.start)} a ${brDate(R.pr.end)} · Profissional: ${esc(S.profile.name)}${S.profile.title?' – '+esc(S.profile.title):''}</p>
+    <table class="grid"><thead><tr><th>Paciente</th><th>Pagamento</th><th>Sessões</th><th>Datas</th><th>Faltas</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.p.name)}${ageOf(r.p.birth)!==null?`<br><small>${ageOf(r.p.birth)} anos</small>`:''}</td><td>${esc(r.pay)}${r.p.card?`<br><small>${esc(r.p.card)}</small>`:''}</td><td>${r.done.length}</td><td>${r.done.map(x=>fmtDate(x.date)).join(', ')}</td><td>${r.miss.length||''}</td></tr>`).join('')}</tbody></table>
+    ${rows.some(r=>r.last||r.p.diag)?`<h2>Resumo clínico</h2>${rows.filter(r=>r.last||r.p.diag).map(r=>`<div class="ev"><b>${esc(r.p.name)}</b>${r.p.diag?`<p><i>Motivo:</i> ${esc(r.p.diag)}</p>`:''}${r.last?`<p><i>Última evolução (${fmtDate(r.last.date)}):</i> ${esc(r.last.text)}</p>`:''}</div>`).join('')}`:''}
+    <div class="sign"><div class="line"></div>${esc(S.profile.name)}${S.profile.title?'<br>'+esc(S.profile.title):''}</div>`;
+  return{text:L.join('\n'),html,count:rows.length};
+}
+
+function printDoc(title,inner){
+  const doc=`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>
+    body{font:14px/1.5 -apple-system,"Segoe UI",Arial,sans-serif;color:#1e1b2e;max-width:760px;margin:24px auto;padding:0 20px}
+    h1{font-size:20px;margin:0 0 14px}h2{font-size:15px;margin:22px 0 8px;text-transform:uppercase;letter-spacing:.05em;color:#5b3fd6}
+    .kv{border-collapse:collapse;width:100%}.kv th{text-align:left;width:38%;color:#6b6880;font-weight:600;padding:5px 8px 5px 0;vertical-align:top}.kv td{padding:5px 0}
+    .grid{border-collapse:collapse;width:100%;font-size:13px}.grid th,.grid td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top}.grid th{background:#f3f1fa}
+    .ev{border-top:1px solid #e4e1ee;padding:10px 0}.ev p{white-space:pre-wrap;margin:4px 0}.meta{color:#6b6880}
+    .sign{margin-top:48px;text-align:center}.sign .line{width:260px;border-top:1px solid #1e1b2e;margin:0 auto 6px}
+    .bar{position:sticky;top:0;background:#fff;padding:10px 0;display:flex;gap:8px}.bar button{font:inherit;padding:10px 16px;border-radius:10px;border:0;background:#5b3fd6;color:#fff;font-weight:600}
+    @media print{.bar{display:none}body{margin:0}}</style></head><body><div class="bar"><button onclick="print()">Imprimir ou salvar PDF</button><button onclick="close()" style="background:#e4e1ee;color:#1e1b2e">Fechar</button></div>${inner}</body></html>`;
+  const w=window.open('','_blank');
+  if(w){w.document.open();w.document.write(doc);w.document.close();return}
+  saveFile(title.replace(/[^\wÀ-ú -]/g,'').trim()+'.html',doc,'text/html');
+}
+
+/* ---------- horários ---------- */
+function renderHours(){
+  const upcoming=S.exceptions.filter(e=>e.date>=todayISO()).sort((a,b)=>(a.date+(a.s||'')).localeCompare(b.date+(b.s||'')));
+  app.innerHTML=`<div class="top"><div><h1>Horários</h1><div class="sub">Toque num dia para mudar, tirar ou incluir horários</div></div></div>
+  <div style="display:flex;flex-direction:column;gap:14px">
+  ${S.places.map(p=>`<div class="rows" style="--pc:${cv(p.color)}"><div class="placehead"><span class="swatch" style="background:${cv(p.color)};width:14px;height:14px"></span><b>${esc(p.name)}</b><span class="small muted num">${p.duration||50} min</span></div>
+    <div class="daygrid">${DAY_ORDER.map(d=>{const iv=p.hours[d]||[];return `<button class="drow" data-pl="${p.id}" data-d="${d}"><span class="d">${WD[d]}</span><span class="ch">${iv.length?iv.map(x=>`<span>${x.s}–${x.e}</span>`).join(''):'<span class="off" style="background:none;padding:0">Não atende</span>'}</span><span class="chev muted">›</span></button>`}).join('')}</div></div>`).join('')}
+  </div>
+  <div class="section"><div class="label">Folgas e horários extras</div>
+    <div class="small muted">Para um dia específico: bloqueie (feriado, folga, consulta) ou abra um horário fora do normal.</div>
+    ${upcoming.length?`<div class="rows">${upcoming.map(e=>`<button class="row exc" data-ex="${e.id}"><span class="tag ${e.type}">${e.type==='block'?'Bloqueio':'Extra'}</span><span class="grow"><b class="num">${cap(WDL[parse(e.date).getDay()])}, ${fmtDate(e.date)} · ${e.allDay?'dia inteiro':e.s+'–'+e.e}</b><span class="small muted">${e.placeId?esc(place(e.placeId)?.name||''):'Todos os locais'}${e.note?' · '+esc(e.note):''}</span></span><span class="chev">›</span></button>`).join('')}</div>`:'<div class="empty"><b>Nada programado</b>Use o botão abaixo para marcar uma folga ou um horário extra.</div>'}
+    <div class="btnrow"><button class="btn soft" id="exBlock">+ Bloquear um dia</button><button class="btn ghost" id="exExtra">+ Horário extra</button></div>
+  </div>`;
+  app.querySelectorAll('.drow').forEach(b=>b.onclick=()=>editDay(b.dataset.pl,+b.dataset.d));
+  app.querySelectorAll('[data-ex]').forEach(b=>b.onclick=()=>editException(b.dataset.ex));
+  $('#exBlock').onclick=()=>editException(null,'block');
+  $('#exExtra').onclick=()=>editException(null,'extra');
+}
+function editDay(placeId,d){
+  const p=place(placeId);
+  let ivs=(p.hours[d]||[]).map(x=>({...x}));
+  openSheet(`${esc(p.name)} · ${cap(WDL[d])}`,'',b=>{
+    const draw=()=>{
+      b.innerHTML=`
+      <label class="toggle"><span>Atende neste dia</span><input type="checkbox" id="dOn" ${ivs.length?'checked':''}></label>
+      <div id="dBody" ${ivs.length?'':'hidden'} style="display:flex;flex-direction:column;gap:10px">
+        <div class="label">Faixas de horário</div>
+        ${ivs.map((x,i)=>`<div class="ivrow">${timeSel(`data-i="${i}" data-f="s"`,x.s)}<span class="muted">às</span>${timeSel(`data-i="${i}" data-f="e"`,x.e)}<button class="x" data-rm="${i}" aria-label="Remover faixa">✕</button></div>`).join('')}
+        <button class="link" id="dAdd">+ Adicionar outra faixa</button>
+        <div class="label" style="margin-top:4px">Atalhos</div>
+        <div class="presets"><button data-ps="08:00|12:00">Manhã 08–12</button><button data-ps="13:00|18:00">Tarde 13–18</button><button data-ps="18:00|20:00">Noite 18–20</button><button data-ps="08:00|20:00">Dia todo 08–20</button></div>
+      </div>
+      <label class="toggle"><span>Aplicar também aos outros dias úteis (seg a sex)</span><input type="checkbox" id="dAll"></label>
+      <button class="btn primary block" id="dSave">Salvar ${WDL[d]}</button>`;
+      b.querySelector('#dOn').onchange=e=>{ivs=e.target.checked?(ivs.length?ivs:[{s:'08:00',e:'12:00'}]):[];draw()};
+      b.querySelectorAll('select').forEach(s=>s.onchange=()=>{ivs[+s.dataset.i][s.dataset.f]=s.value});
+      b.querySelectorAll('[data-rm]').forEach(x=>x.onclick=()=>{ivs.splice(+x.dataset.rm,1);draw()});
+      b.querySelector('#dAdd').onclick=()=>{const last=ivs[ivs.length-1];const s=last?toHM(Math.min(toMin(last.e)+60,22*60)):'08:00';ivs.push({s,e:toHM(Math.min(toMin(s)+240,23*60))});draw()};
+      b.querySelectorAll('[data-ps]').forEach(x=>x.onclick=()=>{const[s,e]=x.dataset.ps.split('|');ivs.push({s,e});draw()});
+      b.querySelector('#dSave').onclick=()=>{
+        const clean=ivs.filter(x=>x.s<x.e).sort((a,b)=>a.s.localeCompare(b.s));
+        if(ivs.length&&!clean.length){toast('O horário final precisa ser depois do inicial');return}
+        for(let i=1;i<clean.length;i++)if(clean[i].s<clean[i-1].e){toast('Duas faixas estão se sobrepondo');return}
+        const days=b.querySelector('#dAll').checked?[1,2,3,4,5]:[d];
+        days.forEach(x=>p.hours[x]=clean.map(c=>({...c})));
+        save();closeSheet();render();toast('Horários salvos');
+      };
+    };
+    draw();
+  });
+}
+function editException(id,type){
+  const e=id?{...S.exceptions.find(x=>x.id===id)}:{id:null,date:ui.sel>=todayISO()?ui.sel:todayISO(),placeId:'',type:type||'block',allDay:(type||'block')==='block',s:'18:00',e:'20:00',note:''};
+  if(!e.placeId&&e.type==='extra')e.placeId=S.places[0].id;
+  openSheet(id?'Editar exceção':'Folga ou horário extra','',b=>{
+    const draw=()=>{
+      b.innerHTML=`
+      <div class="seg solid" id="xType"><button data-v="block">Bloquear (folga)</button><button data-v="extra">Horário extra</button></div>
+      <label class="field"><span>Data</span><input class="input" id="xDate" type="date" value="${e.date}"></label>
+      <label class="field"><span>Local</span><select class="input" id="xPlace">${e.type==='block'?'<option value="">Todos os locais</option>':''}${S.places.map(p=>`<option value="${p.id}" ${p.id===e.placeId?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label>
+      ${e.type==='block'?`<label class="toggle"><span>Dia inteiro</span><input type="checkbox" id="xAll" ${e.allDay?'checked':''}></label>`:''}
+      ${e.type==='extra'||!e.allDay?`<div class="ivrow" style="grid-template-columns:1fr auto 1fr">${timeSel('id="xS"',e.s)}<span class="muted">às</span>${timeSel('id="xE"',e.e)}</div>`:''}
+      <label class="field"><span>Motivo (opcional)</span><input class="input" id="xNote" value="${esc(e.note)}" placeholder="${e.type==='block'?'Ex.: feriado, congresso':'Ex.: reposição'}"></label>
+      <button class="btn primary block" id="xSave">Salvar</button>
+      ${id?'<button class="btn danger block" id="xDel">Remover</button>':''}`;
+      segSelect(b.querySelector('#xType'),e.type);
+      const keep=()=>{e.date=b.querySelector('#xDate').value;e.placeId=b.querySelector('#xPlace').value;e.note=b.querySelector('#xNote').value;
+        if(b.querySelector('#xS')){e.s=b.querySelector('#xS').value;e.e=b.querySelector('#xE').value}};
+      b.querySelectorAll('#xType button').forEach(x=>x.onclick=()=>{keep();e.type=x.dataset.v;if(e.type==='extra'&&!e.placeId)e.placeId=S.places[0].id;e.allDay=e.type==='block'&&e.allDay;draw()});
+      const xa=b.querySelector('#xAll');if(xa)xa.onchange=()=>{keep();e.allDay=xa.checked;draw()};
+      b.querySelector('#xSave').onclick=()=>{keep();
+        if(!e.date){toast('Escolha a data');return}
+        if(!(e.type==='block'&&e.allDay)&&e.s>=e.e){toast('O horário final precisa ser depois do inicial');return}
+        const rec={...e,allDay:e.type==='block'&&e.allDay};
+        if(id)Object.assign(S.exceptions.find(x=>x.id===id),rec);else S.exceptions.push({...rec,id:uid()});
+        const hits=activeAppts().filter(a=>a.date===e.date&&(!e.placeId||a.placeId===e.placeId)&&(rec.allDay||(toMin(a.time)<toMin(e.e)&&toMin(a.time)+(+a.dur||50)>toMin(e.s))));
+        save();closeSheet();render();toast(rec.type==='block'&&hits.length?`Salvo. Há ${hits.length} atendimento(s) marcados nesse bloqueio`:'Salvo');
+      };
+      const del=b.querySelector('#xDel');if(del)twoTap(del,'Remover','Toque de novo para remover',()=>{S.exceptions=S.exceptions.filter(x=>x.id!==id);save();closeSheet();render();toast('Removido')});
+    };
+    draw();
+  });
+}
+
+/* ---------- relatórios ---------- */
+function period(){
+  const a=parse(ui.rep.anchor);
+  if(ui.rep.mode==='semana'){const s=startOfWeek(a),e=addDays(s,6);
+    const lbl=s.getMonth()===e.getMonth()?`${s.getDate()} a ${e.getDate()} de ${MES[e.getMonth()]}`:`${s.getDate()}/${pad(s.getMonth()+1)} a ${e.getDate()}/${pad(e.getMonth()+1)}`;
+    return{start:iso(s),end:iso(e),label:'Semana de '+lbl,short:lbl,file:'semana-'+iso(s)}}
+  const s=new Date(a.getFullYear(),a.getMonth(),1),e=new Date(a.getFullYear(),a.getMonth()+1,0);
+  return{start:iso(s),end:iso(e),label:cap(MES[s.getMonth()])+' de '+s.getFullYear(),short:cap(MES[s.getMonth()])+' '+s.getFullYear(),file:'mes-'+iso(s).slice(0,7)};
+}
+function reportData(){
+  const pr=period();
+  const inP=S.appts.filter(a=>a.date>=pr.start&&a.date<=pr.end);
+  const done=inP.filter(a=>a.status==='concluido');
+  const sched=inP.filter(a=>a.status==='agendado'||a.status==='confirmado');
+  const sum=l=>l.reduce((s,a)=>s+(+a.price||0),0);
+  const groupBy=(list,keyFn)=>{const m=new Map();list.forEach(a=>{const k=keyFn(a);if(!m.has(k))m.set(k,[]);m.get(k).push(a)});return m};
+  const places=S.places.map(p=>{
+    const pd=done.filter(a=>a.placeId===p.id);
+    const groups=[...groupBy(pd,payKey).entries()].map(([k,l])=>({key:k,name:payName(l[0]),list:l,total:sum(l),paid:sum(l.filter(a=>a.paid)),pend:sum(l.filter(a=>!a.paid)),prices:[...new Set(l.map(a=>+a.price||0))]})).sort((x,y)=>(x.key==='particular')-(y.key==='particular')||x.name.localeCompare(y.name));
+    return{p,list:pd,total:sum(pd),paid:sum(pd.filter(a=>a.paid)),pend:sum(pd.filter(a=>!a.paid)),groups,sched:sched.filter(a=>a.placeId===p.id)};
+  }).filter(x=>x.list.length||x.sched.length);
+  const byPay=[...groupBy(done,payKey).entries()].map(([k,l])=>({key:k,name:payName(l[0]),n:l.length,total:sum(l),pend:sum(l.filter(a=>!a.paid))})).sort((x,y)=>y.total-x.total);
+  return{pr,inP,done,sched,missed:inP.filter(a=>a.status==='faltou'),cancel:inP.filter(a=>a.status==='cancelado'),
+    total:sum(done),paid:sum(done.filter(a=>a.paid)),pend:sum(done.filter(a=>!a.paid)),forecast:sum(sched),places,byPay};
+}
+function groupDet(g){return g.prices.length===1?`${g.list.length} × ${money(g.prices[0])}`:`${g.list.length} atendimentos`}
+function renderReports(){
+  const R=reportData();const maxPay=Math.max(1,...R.byPay.map(x=>x.total));
+  const sortedList=[...R.inP].sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+  app.innerHTML=`<div class="top"><div><h1>Relatórios</h1><div class="sub">${R.pr.label}</div></div>
+    <div style="display:flex;gap:6px"><button class="iconbtn" id="rPrev" aria-label="Período anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg></button><button class="iconbtn" id="rNext" aria-label="Próximo período"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg></button></div></div>
+  <div class="seg solid" id="rMode" style="margin-bottom:14px"><button data-v="semana">Semanal</button><button data-v="mes">Mensal</button></div>
+  <div class="stats three">
+    <div class="stat"><div class="label">Atendidos</div><div class="v">${R.done.length}</div></div>
+    <div class="stat"><div class="label">Faltas</div><div class="v">${R.missed.length}</div></div>
+    <div class="stat"><div class="label">Agendados</div><div class="v">${R.sched.length}</div></div>
+  </div>
+  <div class="card" style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
+    <div class="ptotal"><span class="label">Receita dos atendidos</span><b class="num">${money(R.total)}</b></div>
+    <div class="ptotal small"><span class="muted">Já recebido</span><span class="num" style="color:var(--ok);font-weight:700">${money(R.paid)}</span></div>
+    <div class="ptotal small"><span class="muted">A receber (repasses e pendentes)</span><span class="num" style="color:${R.pend?'var(--warn)':'inherit'};font-weight:700">${money(R.pend)}</span></div>
+    <div class="ptotal small"><span class="muted">Previsão dos ainda agendados</span><span class="num" style="font-weight:600">${money(R.forecast)}</span></div>
+  </div>
+  <div class="btnrow" style="margin-top:10px"><button class="btn soft" id="rCopy">Copiar relatório</button><button class="btn ghost" id="rCsv">Exportar planilha</button></div>
+
+  <div class="section"><div class="label">Conferência por local</div>
+    <div class="small muted">Compare com o que cada clínica pagar. Ao receber, toque em "Marcar recebido" no grupo.</div>
+    ${R.places.length?R.places.map(x=>`<div class="card" style="display:flex;flex-direction:column;gap:12px">
+      <div class="ptotal"><span style="display:flex;align-items:center;gap:8px;min-width:0"><span class="swatch" style="background:${cv(x.p.color)}"></span><b>${esc(x.p.name)}</b></span><b class="num">${money(x.total)}</b></div>
+      <div class="small muted num">${x.list.length} atendidos · recebido ${money(x.paid)} · a receber ${money(x.pend)}${x.sched.length?` · ${x.sched.length} ainda agendados`:''}</div>
+      <button class="mini" data-crep="${x.p.id}" style="align-self:flex-start">Relatório de pacientes para a clínica</button>
+      ${x.groups.map(g=>`<div class="grp"><div class="gline"><span class="nm"><span class="pay ${g.key==='particular'?'':'conv'}">${esc(g.name)}</span></span><span class="tot">${money(g.total)}</span><span class="det">${groupDet(g)}</span><span class="stt" style="color:${g.pend?'var(--warn)':'var(--ok)'}">${g.pend?'falta '+money(g.pend):'tudo recebido'}</span></div>
+        ${g.pend?`<button class="mini" data-mark="${x.p.id}|${g.key}">Marcar ${money(g.pend)} como recebido</button>`:''}</div>`).join('')||'<div class="small muted">Nenhum atendimento concluído ainda neste período.</div>'}
+    </div>`).join(''):'<div class="empty"><b>Sem atendimentos neste período</b>Os números aparecem quando você marca atendimentos como atendidos.</div>'}
+  </div>
+
+  ${R.byPay.length?`<div class="section"><div class="label">Por convênio e particular</div><div class="card" style="display:flex;flex-direction:column;gap:14px">
+    ${R.byPay.map(g=>`<div style="--pc:var(--accent)"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(g.name)}</b><span class="num small">${g.n} · ${money(g.total)}</span></div><div class="bar"><i style="width:${g.total/maxPay*100}%"></i></div>${g.pend?`<div class="small num" style="color:var(--warn);margin-top:4px">a receber ${money(g.pend)}</div>`:''}</div>`).join('')}
+  </div></div>`:''}
+
+  <div class="section"><button class="btn ghost block" id="rList">${ui.showList?'Esconder':'Ver'} lista de atendimentos (${sortedList.length})</button>
+  ${ui.showList?`<div class="scrollx"><table class="tbl"><thead><tr><th>Data</th><th>Paciente</th><th>Local</th><th>Pagamento</th><th class="r">Valor</th><th>Situação</th></tr></thead><tbody>
+    ${sortedList.map(a=>`<tr data-a="${a.id}"><td>${fmtDate(a.date)} ${a.time}</td><td>${esc(patient(a.patientId)?.name||'')}</td><td>${esc(place(a.placeId)?.name||'')}</td><td>${esc(payName(a))}</td><td class="r">${money(a.price)}</td><td>${STATUS[a.status]}${a.status==='concluido'?(a.paid?' · recebido':' · a receber'):''}</td></tr>`).join('')}
+  </tbody></table></div>`:''}</div>`;
+  segSelect($('#rMode'),ui.rep.mode);
+  $('#rMode').querySelectorAll('button').forEach(b=>b.onclick=()=>{ui.rep.mode=b.dataset.v;render()});
+  const shift=k=>{const a=parse(ui.rep.anchor);ui.rep.anchor=iso(ui.rep.mode==='semana'?addDays(a,7*k):new Date(a.getFullYear(),a.getMonth()+k,1));render()};
+  $('#rPrev').onclick=()=>shift(-1);$('#rNext').onclick=()=>shift(1);
+  $('#rList').onclick=()=>{ui.showList=!ui.showList;render()};
+  $('#rCopy').onclick=()=>openSheet('Relatório em texto',`<pre class="share" id="rTxt"></pre><button class="btn primary block" id="rTxtCopy">Copiar texto</button>`,b=>{b.querySelector('#rTxt').textContent=reportText(R);b.querySelector('#rTxtCopy').onclick=()=>copy(reportText(R))});
+  $('#rCsv').onclick=()=>saveFile(`atendimentos-${R.pr.file}.csv`,reportCsv(R),'text/csv;charset=utf-8');
+  app.querySelectorAll('[data-mark]').forEach(btn=>{const[pid,key]=btn.dataset.mark.split('|');const lbl=btn.textContent;
+    twoTap(btn,lbl,'Toque de novo para confirmar',()=>{let n=0;R.done.forEach(a=>{if(a.placeId===pid&&payKey(a)===key&&!a.paid){a.paid=true;n++}});save();render();toast(`${n} atendimento(s) marcados como recebidos`)})});
+  app.querySelectorAll('tr[data-a]').forEach(r=>r.onclick=()=>viewAppt(r.dataset.a));
+  app.querySelectorAll('[data-crep]').forEach(btn=>btn.onclick=()=>{const c=clinicReport(btn.dataset.crep,R);
+    openSheet('Pacientes · '+place(btn.dataset.crep).name,`<div class="small muted">${R.pr.label}. ${c.count} paciente(s) com sessões ou faltas neste local.</div><pre class="share" id="cTxt"></pre><div class="btnrow"><button class="btn primary" id="cCopy">Copiar texto</button><button class="btn ghost" id="cPrint">Imprimir ou PDF</button></div>`,b=>{
+      b.querySelector('#cTxt').textContent=c.text;b.querySelector('#cCopy').onclick=()=>copy(c.text);b.querySelector('#cPrint').onclick=()=>printDoc('Relatório de pacientes – '+place(btn.dataset.crep).name,c.html)})});
+}
+function reportText(R){
+  const L=[];
+  L.push(`*Relatório de atendimentos – ${R.pr.label}*`);
+  if(S.profile.name&&!S.demo)L.push(S.profile.name+(S.profile.title?' · '+S.profile.title:''));
+  L.push('');
+  L.push(`Atendidos: ${R.done.length} · Faltas: ${R.missed.length} · Agendados: ${R.sched.length}`);
+  L.push(`Receita: ${money(R.total)}`);
+  L.push(`Recebido: ${money(R.paid)} · A receber: ${money(R.pend)}`);
+  if(R.forecast)L.push(`Previsão dos agendados: ${money(R.forecast)}`);
+  R.places.forEach(x=>{if(!x.list.length)return;L.push('');L.push(`*${x.p.name}* — ${x.list.length} atend. · ${money(x.total)}`);
+    x.groups.forEach(g=>L.push(`• ${g.name}: ${groupDet(g)} = ${money(g.total)}${g.pend?` (a receber ${money(g.pend)})`:' (recebido)'}`))});
+  return L.join('\n');
+}
+function reportCsv(R){
+  const q=v=>{const s=String(v??'');return /[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
+  const num=v=>(+v||0).toFixed(2).replace('.',',');
+  const rows=[['Data','Hora','Paciente','Telefone','Local','Pagamento','Convênio','Valor (R$)','Situação','Recebido']];
+  [...R.inP].sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)).forEach(a=>{const p=patient(a.patientId);
+    rows.push([parse(a.date).toLocaleDateString('pt-BR'),a.time,p?.name||'',fmtPhone(p?.phone||''),place(a.placeId)?.name||'',a.pay==='convenio'?'Convênio':'Particular',a.pay==='convenio'?payName(a):'',num(a.price),STATUS[a.status],a.status==='concluido'?(a.paid?'Sim':'Não'):''])});
+  rows.push([]);rows.push(['Resumo por local e pagamento (atendidos)']);rows.push(['Local','Pagamento','Quantidade','Total (R$)','Recebido (R$)','A receber (R$)']);
+  R.places.forEach(x=>x.groups.forEach(g=>rows.push([x.p.name,g.name,g.list.length,num(g.total),num(g.paid),num(g.pend)])));
+  rows.push(['Total','',R.done.length,num(R.total),num(R.paid),num(R.pend)]);
+  return '﻿'+rows.map(r=>r.map(q).join(';')).join('\r\n');
+}
+
+/* ---------- ajustes ---------- */
+function renderSettings(){
+  app.innerHTML=`<div class="top"><div><h1>Ajustes</h1><div class="sub">Locais, convênios e mensagens</div></div></div>
+  ${S.demo?`<div class="info" style="margin-bottom:6px">Você está usando dados de exemplo. <button class="link" id="clearDemo" style="padding:0">Começar com minha agenda</button></div>`:''}
+  <div class="section"><div class="label">Onde você atende</div>
+    <div class="rows">${S.places.map(p=>`<button class="row" data-pl="${p.id}"><span class="swatch" style="background:${cv(p.color)};width:14px;height:14px"></span><span class="grow"><b>${esc(p.name)}</b><span class="small muted">${p.kind==='particular'?'Particular':'Clínica'}${p.price?' · particular '+money(p.price):''} · ${p.duration||50} min${p.msg?' · mensagem própria':''}</span></span><span class="chev">›</span></button>`).join('')}</div>
+    <button class="btn soft block" id="addPlace">+ Adicionar clínica ou local</button></div>
+  <div class="section"><div class="label">Convênios</div>
+    <div class="small muted">Cadastre quanto você recebe por sessão em cada convênio. Se o valor muda de uma clínica para outra, informe por local.</div>
+    ${S.insurers.length?`<div class="rows">${S.insurers.map(i=>{const diff=S.places.filter(p=>i.prices&&i.prices[p.id]!==undefined&&i.prices[p.id]!=='');return `<button class="row" data-ins="${i.id}"><span class="avatar" style="width:34px;height:34px;font-size:13px">${esc(initials(i.name))}</span><span class="grow"><b>${esc(i.name)}</b><span class="small muted num">${money(i.price)} por sessão${diff.length?` · ${diff.length} local(is) com valor próprio`:''}</span></span><span class="chev">›</span></button>`}).join('')}</div>`:'<div class="empty"><b>Nenhum convênio ainda</b>Adicione os convênios que você atende, como CIMED ou Unimed.</div>'}
+    <button class="btn soft block" id="addIns">+ Adicionar convênio</button></div>
+  <div class="section"><div class="label">Seu perfil</div><div class="card" style="display:flex;flex-direction:column;gap:12px">
+    <label class="field"><span>Nome</span><input class="input" id="sName" value="${esc(S.profile.name)}"></label>
+    <label class="field"><span>Profissão</span><input class="input" id="sTitle" value="${esc(S.profile.title||'')}"></label></div></div>
+  <div class="section"><div class="label">Mensagem geral de confirmação</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <textarea class="input" id="sMsg">${esc(S.settings.msg||DEFAULT_MSG)}</textarea>
+    <div class="small muted">Usada nos locais sem mensagem própria. Cada clínica ou o particular pode ter a sua: toque no local acima. Use {paciente}, {dia}, {hora}, {local}, {endereco}, {info} e {profissional}.</div>
+    <button class="link" id="resetMsg">Voltar ao texto padrão</button></div></div>
+  <div class="section"><div class="label">Cópia de segurança</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <b>${backupLabel()}</b>
+    <div class="small muted">Seus dados, inclusive prontuários, ficam guardados só neste aparelho. O app avisa na agenda quando passar 7 dias sem cópia. Salve no iCloud Drive ou no Google Drive e guarde em local seguro, pois o arquivo contém dados de saúde dos pacientes.</div>
+    <div class="btnrow"><button class="btn primary" id="exp">Salvar cópia agora</button><label class="btn ghost" for="imp" style="cursor:pointer">Restaurar cópia</label></div>
+    <input type="file" id="imp" accept="application/json,.json" hidden></div></div>
+  <div class="section"><div class="card small muted">Para usar como app no iPhone: abra no Safari, toque em Compartilhar e depois em <b>Adicionar à Tela de Início</b>.</div></div>
+  <div class="section" style="margin-bottom:10px"><button class="btn danger block" id="wipe">Apagar todos os dados deste aparelho</button></div>`;
+  $('#sName').onchange=e=>{S.profile.name=e.target.value.trim()||S.profile.name;save();toast('Nome salvo')};
+  $('#sTitle').onchange=e=>{S.profile.title=e.target.value.trim();save();toast('Profissão salva')};
+  $('#sMsg').onchange=e=>{S.settings.msg=e.target.value;save();toast('Mensagem salva')};
+  $('#resetMsg').onclick=()=>{S.settings.msg=DEFAULT_MSG;save();render();toast('Texto padrão restaurado')};
+  app.querySelectorAll('[data-pl]').forEach(b=>b.onclick=()=>editPlace(b.dataset.pl));
+  app.querySelectorAll('[data-ins]').forEach(b=>b.onclick=()=>editInsurer(b.dataset.ins));
+  $('#addPlace').onclick=()=>editPlace(null);
+  $('#addIns').onclick=()=>editInsurer(null);
+  if($('#clearDemo'))$('#clearDemo').onclick=()=>{S=null;try{localStorage.removeItem(KEY)}catch(e){}render()};
+  $('#exp').onclick=backupSheet;
+  $('#imp').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!d.places||!d.appts)throw 0;S=d;migrate();save();render();toast('Agenda restaurada')}catch(err){toast('Esse arquivo não é uma cópia da agenda')}};r.readAsText(f)};
+  twoTap($('#wipe'),'Apagar todos os dados deste aparelho','Tem certeza? Toque de novo para apagar tudo',()=>{S=null;try{localStorage.removeItem(KEY)}catch(e){}render()});
+}
+
+function editInsurer(id){
+  const orig=id?insurer(id):null;
+  const i=orig?JSON.parse(JSON.stringify(orig)):{id:uid(),name:'',price:'',prices:{}};
+  const uses=id?S.appts.filter(a=>a.insurerId===id).length:0;
+  openSheet(id?i.name:'Novo convênio',`
+    <label class="field"><span>Nome do convênio</span><input class="input" id="iName" value="${esc(i.name)}" placeholder="Ex.: CIMED"></label>
+    <label class="field"><span>Quanto você recebe por sessão (R$)</span><input class="input num" id="iPrice" type="number" inputmode="decimal" min="0" step="0.01" value="${i.price||''}"></label>
+    <div class="field"><span>Valor diferente em algum local? (opcional)</span>
+      <div style="display:flex;flex-direction:column;gap:8px">${S.places.map(p=>`<div class="two" style="align-items:center"><span style="display:flex;align-items:center;gap:8px;font-weight:600;min-width:0"><span class="swatch" style="background:${cv(p.color)}"></span>${esc(p.name)}</span><input class="input num" data-pp="${p.id}" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Usar padrão" value="${i.prices[p.id]??''}"></div>`).join('')}</div></div>
+    ${uses?`<label class="toggle"><span>Atualizar o valor dos ${uses} atendimentos ainda não atendidos</span><input type="checkbox" id="iUpd"></label>`:''}
+    <button class="btn primary block" id="iSave">Salvar convênio</button>
+    ${id?'<button class="btn danger block" id="iDel">Excluir convênio</button>':''}`,b=>{
+    b.querySelector('#iSave').onclick=()=>{
+      const n=b.querySelector('#iName').value.trim();if(!n){toast('Escreva o nome do convênio');return}
+      i.name=n;i.price=+b.querySelector('#iPrice').value||0;i.prices={};
+      b.querySelectorAll('[data-pp]').forEach(x=>{if(x.value!=='')i.prices[x.dataset.pp]=+x.value});
+      if(orig)Object.assign(orig,i);else S.insurers.push(i);
+      const ins=orig||i;
+      S.appts.forEach(a=>{if(a.insurerId===ins.id){a.insName=ins.name;if(b.querySelector('#iUpd')?.checked&&(a.status==='agendado'||a.status==='confirmado'))a.price=insPrice(ins,a.placeId)}});
+      save();closeSheet();render();toast('Convênio salvo');
+    };
+    const del=b.querySelector('#iDel');if(del)twoTap(del,'Excluir convênio',uses?'Os atendimentos continuam com o nome. Toque de novo':'Toque de novo para excluir',()=>{
+      S.insurers=S.insurers.filter(x=>x.id!==id);S.patients.forEach(p=>{if(p.insurerId===id){p.insurerId='';p.pay='particular'}});save();closeSheet();render();toast('Convênio excluído')});
+  });
+}
+
+function editPlace(id){
+  const orig=id?place(id):null;
+  const p=orig?JSON.parse(JSON.stringify(orig)):newPlace('',COLORS[S.places.length%6]);
+  const uses=id?S.appts.filter(a=>a.placeId===id).length:0;
+  openSheet(id?p.name:'Novo local',`
+    <label class="field"><span>Nome</span><input class="input" id="lName" value="${esc(p.name)}" placeholder="Ex.: Clínica Bem Estar"></label>
+    <div class="seg" id="lKind"><button data-v="clinica">Clínica</button><button data-v="particular">Particular / domicílio</button></div>
+    <label class="field"><span>Endereço (opcional)</span><input class="input" id="lAddr" value="${esc(p.address)}" placeholder="Rua, número, bairro"></label>
+    <div class="two"><label class="field"><span>Valor particular (R$)</span><input class="input num" id="lPrice" type="number" inputmode="decimal" min="0" step="0.01" value="${p.price||''}"></label>
+    <label class="field"><span>Duração (min)</span><input class="input num" id="lDur" type="number" inputmode="numeric" min="5" step="5" value="${p.duration||50}"></label></div>
+    <div class="field"><span>Cor do local</span><div class="crow"><span class="cprev" id="lSw" style="background:${cv(p.color)}"></span><button type="button" class="btn ghost" id="lColBtn">Alterar cor</button></div><div class="cpick obpick" id="lColor" hidden></div></div>
+    <label class="field"><span>Informações para o paciente (opcional)</span><textarea class="input" id="lInfo" placeholder="Ex.: Sala 3, 2º andar. Chegar 10 min antes e levar a carteirinha do convênio.">${esc(p.info||'')}</textarea></label>
+    <div class="field"><span>Mensagem de confirmação deste local</span><textarea class="input" id="lMsg" style="min-height:110px">${esc(p.msg||placeMsgSuggestion(p))}</textarea>
+      <span class="small muted" style="font-weight:400">{endereco} e {info} são preenchidos com os campos acima. Também valem {paciente}, {dia}, {hora}, {local} e {profissional}.</span>
+      <button type="button" class="link" id="lMsgReset">Usar a mensagem geral de Ajustes</button></div>
+    <div class="info">Os dias e horários de atendimento ficam na aba <b>Horários</b>.</div>
+    <button class="btn primary block" id="lSave">${id?'Salvar local':'Salvar e definir horários'}</button>
+    ${id?`<button class="btn danger block" id="lDel">Excluir local</button>`:''}`,b=>{
+    const $b=s=>b.querySelector(s);
+    segSelect($b('#lKind'),p.kind);
+    b.querySelectorAll('#lKind button').forEach(x=>x.onclick=()=>{const wasSug=$b('#lMsg').value===placeMsgSuggestion(p);p.kind=x.dataset.v;segSelect($b('#lKind'),p.kind);if(wasSug)$b('#lMsg').value=placeMsgSuggestion(p)});
+    $b('#lMsgReset').onclick=()=>{$b('#lMsg').value=S.settings.msg||DEFAULT_MSG};
+    $b('#lColBtn').onclick=()=>{const box=$b('#lColor');if(!box.hidden){box.hidden=true;return}box.hidden=false;
+      colorPicker(box,p.color,c=>{p.color=c;$b('#lSw').style.background=cv(c)},()=>{box.hidden=true;$b('#lColBtn').focus()})};
+    $b('#lSave').onclick=()=>{
+      p.name=$b('#lName').value.trim();if(!p.name){toast('Dê um nome ao local');$b('#lName').focus();return}
+      p.address=$b('#lAddr').value.trim();p.price=+$b('#lPrice').value||0;p.duration=+$b('#lDur').value||50;
+      p.info=$b('#lInfo').value.trim();const m=$b('#lMsg').value.trim();p.msg=(m===(S.settings.msg||DEFAULT_MSG))?'':m;
+      if(orig)Object.assign(orig,p);else S.places.push(p);
+      save();closeSheet();if(!orig){ui.tab='horarios'}render();toast(orig?'Local salvo':'Local criado. Toque nos dias para definir horários');
+    };
+    const del=$b('#lDel');if(del)twoTap(del,'Excluir local',uses?`Isso apaga ${uses} atendimentos deste local. Toque de novo`:'Toque de novo para excluir',()=>{
+      if(S.places.length===1){toast('Mantenha pelo menos um local');return}
+      S.appts=S.appts.filter(a=>a.placeId!==id);S.exceptions=S.exceptions.filter(e=>e.placeId!==id);S.places=S.places.filter(x=>x.id!==id);save();closeSheet();render();toast('Local excluído')});
+  });
+}
+
+render();
+if(location.hash==='#backup'&&S){history.replaceState(null,'',location.pathname+location.search);setTimeout(backupSheet,300)}
+if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
+})();
+</script>
+
+</body>
+</html>
