@@ -645,6 +645,39 @@ function compressImage(file,maxDim,quality){
     reader.readAsDataURL(file);
   });
 }
+// Carrega o pdf.js sob demanda (só quando alguém envia um PDF de timbre),
+// pra não pesar o carregamento do app pra quem nunca usa isso.
+const PDFJS_VERSION='3.11.174';
+let pdfJsPromise=null;
+function loadPdfJs(){
+  if(pdfJsPromise)return pdfJsPromise;
+  pdfJsPromise=new Promise((resolve,reject)=>{
+    const s=document.createElement('script');
+    s.src=`https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.min.js`;
+    s.onload=()=>{
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc=`https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.js`;
+      resolve(window.pdfjsLib);
+    };
+    s.onerror=()=>reject(new Error('pdfjs_load_failed'));
+    document.head.appendChild(s);
+  });
+  return pdfJsPromise;
+}
+// Renderiza a 1ª página de um PDF (timbre) como imagem — mesmo formato final
+// da foto de assinatura, só que a entrada pode ser PDF.
+async function pdfFirstPageToDataUrl(file,maxDim,quality){
+  const pdfjsLib=await loadPdfJs();
+  const buf=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  const page=await pdf.getPage(1);
+  const base=page.getViewport({scale:1});
+  const viewport=page.getViewport({scale:maxDim/Math.max(base.width,base.height)});
+  const c=document.createElement('canvas');c.width=viewport.width;c.height=viewport.height;
+  const ctx=c.getContext('2d');
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);
+  await page.render({canvasContext:ctx,viewport}).promise;
+  return c.toDataURL('image/jpeg',quality);
+}
 function saveFile(name,content,type,onSaved){
   const blob=new Blob([content],{type});
   try{const file=new File([blob],name,{type});
@@ -1537,10 +1570,10 @@ function editPlace(id){
     <label class="field"><span>Duração (min)</span><input class="input num" id="lDur" type="number" inputmode="numeric" min="5" step="5" value="${p.duration||50}"></label></div>
     <div class="field"><span>Cor do local</span><div class="crow"><span class="cprev" id="lSw" style="background:${cv(p.color)}"></span><button type="button" class="btn ghost" id="lColBtn">Alterar cor</button></div><div class="cpick obpick" id="lColor" hidden></div></div>
     <div class="field"><span>Modelo timbrado deste local (opcional)</span>
-      <div class="small muted" style="font-weight:400">Aparece no topo dos relatórios/guias gerados para este local, junto com sua assinatura e registro (em Ajustes › Perfil).</div>
+      <div class="small muted" style="font-weight:400">Aparece no topo dos relatórios/guias gerados para este local, junto com sua assinatura e registro (em Ajustes › Perfil). Aceita imagem ou PDF (usa a 1ª página).</div>
       <div id="lLhPreview">${p.letterhead?`<img src="${p.letterhead}" alt="Timbre" style="max-width:100%;max-height:120px;border-radius:10px;border:1px solid var(--line);background:#fff;padding:6px;display:block">`:'<div class="small muted">Nenhum modelo enviado ainda.</div>'}</div>
-      <div class="btnrow"><label class="btn soft" for="lLhFile" style="cursor:pointer">Enviar imagem</label><button type="button" class="btn ghost" id="lLhRemove" ${p.letterhead?'':'hidden'}>Remover</button></div>
-      <input type="file" id="lLhFile" accept="image/*" hidden>
+      <div class="btnrow"><label class="btn soft" id="lLhLabel" for="lLhFile" style="cursor:pointer">Enviar imagem ou PDF</label><button type="button" class="btn ghost" id="lLhRemove" ${p.letterhead?'':'hidden'}>Remover</button></div>
+      <input type="file" id="lLhFile" accept="image/*,.pdf,application/pdf" hidden>
     </div>
     <label class="field"><span>Informações para o paciente (opcional)</span><textarea class="input" id="lInfo" placeholder="Ex.: Sala 3, 2º andar. Chegar 10 min antes e levar a carteirinha do convênio.">${esc(p.info||'')}</textarea></label>
     <div class="field"><span>Mensagem de confirmação deste local</span><textarea class="input" id="lMsg" style="min-height:110px">${esc(p.msg||placeMsgSuggestion(p))}</textarea>
@@ -1557,13 +1590,17 @@ function editPlace(id){
       colorPicker(box,p.color,c=>{p.color=c;$b('#lSw').style.background=cv(c)},()=>{box.hidden=true;$b('#lColBtn').focus()})};
     $b('#lLhFile').onchange=async e=>{
       const f=e.target.files[0];if(!f)return;
+      const isPdf=f.type==='application/pdf'||/\.pdf$/i.test(f.name);
+      const btnLbl=$b('#lLhLabel');const oldTxt=btnLbl.textContent;
+      if(isPdf)btnLbl.textContent='Lendo PDF…';
       try{
-        const dataUrl=await compressImage(f,700,0.85);
+        const dataUrl=isPdf?await pdfFirstPageToDataUrl(f,900,0.85):await compressImage(f,700,0.85);
         p.letterhead=dataUrl;
         $b('#lLhPreview').innerHTML=`<img src="${dataUrl}" alt="Timbre" style="max-width:100%;max-height:120px;border-radius:10px;border:1px solid var(--line);background:#fff;padding:6px;display:block">`;
         $b('#lLhRemove').hidden=false;
         toast('Modelo timbrado pronto — toque em Salvar local');
-      }catch(err){toast('Não consegui processar essa imagem')}
+      }catch(err){toast(isPdf?'Não consegui ler esse PDF. Tente outro arquivo ou uma imagem':'Não consegui processar essa imagem')}
+      btnLbl.textContent=oldTxt;
     };
     $b('#lLhRemove').onclick=()=>{p.letterhead='';$b('#lLhPreview').innerHTML='<div class="small muted">Nenhum modelo enviado ainda.</div>';$b('#lLhRemove').hidden=true};
     $b('#lSave').onclick=()=>{
