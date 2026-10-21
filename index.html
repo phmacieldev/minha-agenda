@@ -1735,7 +1735,12 @@ function renderSetPerfil(body){
     ${pwField('pwNew','Nova senha',{placeholder:'Pelo menos 6 caracteres',autocomplete:'new-password'})}
     <button class="btn primary block" id="pwSave">Salvar nova senha</button>
   </div></div>
-  <div class="section" style="margin-bottom:10px"><button class="btn danger block" id="logout">Sair da conta</button></div>`
+  <div class="section"><button class="btn danger block" id="logout">Sair da conta</button></div>
+  <div class="section" style="margin-bottom:10px"><div class="label">Excluir conta</div><div class="card" data-enter="#delAcct" style="display:flex;flex-direction:column;gap:12px">
+    <div class="small muted">Apaga sua conta, pacientes, prontuários e atendimentos pra sempre — na nuvem e neste aparelho. Não dá pra desfazer.</div>
+    ${pwField('delPw','Confirme sua senha',{autocomplete:'current-password'})}
+    <button class="btn danger block" id="delAcct">Excluir minha conta</button>
+  </div></div>`
   :`<div class="section" style="margin-bottom:10px"><div class="empty"><b>Sem conta na nuvem</b>Você está usando o app sem sincronização. Crie uma conta para trocar de aparelho sem perder dados.</div></div>`}`;
   $('#sName').onchange=e=>{S.profile.name=e.target.value.trim()||S.profile.name;save();toast('Nome salvo');if(AUTH)apiFetch('/auth/me',{method:'PUT',body:JSON.stringify({name:S.profile.name})}).catch(()=>{})};
   $('#sTitle').onchange=e=>{S.profile.title=e.target.value.trim();save();toast('Profissão salva');if(AUTH)apiFetch('/auth/me',{method:'PUT',body:JSON.stringify({title:S.profile.title})}).catch(()=>{})};
@@ -1778,6 +1783,19 @@ function renderSetPerfil(body){
       clearAuth();
       try{localStorage.removeItem(KEY)}catch(e){}
       location.reload();
+    });
+    wireEye('delPw');
+    const delBtn=$('#delAcct');
+    if(delBtn)twoTap(delBtn,'Excluir minha conta','Toque de novo pra confirmar — isso não tem volta',async()=>{
+      const pw=$('#delPw').value;
+      if(!pw){toast('Digite sua senha pra confirmar');return}
+      delBtn.disabled=true;
+      try{
+        await apiFetch('/auth/me',{method:'DELETE',body:JSON.stringify({password:pw})});
+        clearAuth();
+        try{localStorage.removeItem(KEY)}catch(e){}
+        location.reload();
+      }catch(e){delBtn.disabled=false;toast(e.body&&e.body.error==='wrong_password'?'Senha incorreta':'Não consegui excluir a conta agora')}
     });
   }
 }

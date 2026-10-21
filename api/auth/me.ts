@@ -90,7 +90,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(userToMe(result.rows[0]));
     }
 
-    res.setHeader('Allow', 'GET, PUT, PATCH');
+    if (req.method === 'DELETE') {
+      // Exige a senha de novo (como na troca de senha) pra um token sozinho
+      // (ex. roubado de um aparelho destravado) não bastar pra apagar a conta.
+      const parsed = z.object({ password: z.string().min(1) }).safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: 'invalid_input' });
+      const result = await pool.query('select password_hash from users where id = $1', [auth.userId]);
+      if (!result.rowCount) return res.status(404).json({ error: 'not_found' });
+      const ok = await bcrypt.compare(parsed.data.password, result.rows[0].password_hash);
+      if (!ok) return res.status(401).json({ error: 'wrong_password' });
+      // on delete cascade nas FKs já cuida de places/patients/appts/records/etc.
+      await pool.query('delete from users where id = $1', [auth.userId]);
+      return res.status(204).end();
+    }
+
+    res.setHeader('Allow', 'GET, PUT, PATCH, DELETE');
     res.status(405).json({ error: 'method_not_allowed' });
   } catch (err) {
     if (err instanceof UnauthorizedError) return res.status(401).json({ error: 'unauthorized' });
