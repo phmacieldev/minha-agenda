@@ -81,6 +81,7 @@ h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.
 .day .dots{display:flex;gap:3px;height:6px}
 .day .dots i{width:5px;height:5px;border-radius:50%;display:block}
 .day.today .dn{color:var(--accent)}
+.day .dn.hol{text-decoration:underline wavy var(--bad);text-decoration-thickness:1.5px}
 .day.sel{background:var(--accent);color:var(--accent-ink)}
 .day.sel .dw,.day.sel .dn{color:var(--accent-ink)}
 .weeknav{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
@@ -574,6 +575,7 @@ const payName=a=>a.pay==='convenio'?(insurer(a.insurerId)?.name||a.insName||'Con
 /* intervalos de atendimento do dia, já com folgas e horários extras */
 function dayIntervals(date,p){
   const wd=parse(date).getDay();
+  if(S.settings.blockHolidays!==false&&nationalHoliday(date))return [];
   const ex=S.exceptions.filter(e=>e.date===date&&(!e.placeId||e.placeId===p.id));
   if(ex.some(e=>e.type==='block'&&e.allDay))return [];
   const ivs=(p.hours[wd]||[]).map(x=>({...x}));
@@ -581,6 +583,29 @@ function dayIntervals(date,p){
   return ivs;
 }
 const blocksOn=date=>S.exceptions.filter(e=>e.date===date&&e.type==='block');
+
+// Feriados nacionais fixos + móveis (calculados a partir da Páscoa, algoritmo
+// de Gauss) — não depende de cadastro manual nem de ano fixo, funciona pra
+// qualquer data. Carnaval e Corpus Christi são ponto facultativo na maioria
+// das clínicas/consultórios, não feriado decretado, mas entram porque é
+// assim que a maior parte do público deste app trata esses dias.
+const FIXED_HOLIDAYS={'01-01':'Confraternização Universal','04-21':'Tiradentes','05-01':'Dia do Trabalho','09-07':'Independência do Brasil','10-12':'Nossa Senhora Aparecida','11-02':'Finados','11-15':'Proclamação da República','11-20':'Consciência Negra','12-25':'Natal'};
+function easterDate(year){
+  const a=year%19,b=Math.floor(year/100),c=year%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451);
+  const month=Math.floor((h+l-7*m+114)/31),day=((h+l-7*m+114)%31)+1;
+  return new Date(year,month-1,day);
+}
+function nationalHoliday(dateISO){
+  const d=parse(dateISO);
+  const fixed=FIXED_HOLIDAYS[pad(d.getMonth()+1)+'-'+pad(d.getDate())];
+  if(fixed)return fixed;
+  const diff=Math.round((d-easterDate(d.getFullYear()))/86400000);
+  if(diff===-48)return 'Carnaval (segunda)';
+  if(diff===-47)return 'Carnaval (terça)';
+  if(diff===-2)return 'Sexta-feira Santa';
+  if(diff===60)return 'Corpus Christi';
+  return null;
+}
 function freeSlots(date,placeId,ignoreId){
   const busy=activeAppts().filter(a=>a.date===date&&a.id!==ignoreId).map(a=>[toMin(a.time),toMin(a.time)+(+a.dur||50)]);
   const out=[];
@@ -902,6 +927,7 @@ function renderAgenda(){
   const act=list.filter(a=>a.status!=='cancelado');
   const sel=parse(ui.sel);
   const blocks=blocksOn(ui.sel);
+  const hol=nationalHoliday(ui.sel);
   app.innerHTML=`
   <div class="top"><div><h1>Olá, ${esc(S.profile.name.split(' ')[0])}</h1><div class="sub">${S.demo?'Você está vendo exemplos':(S.profile.title?esc(S.profile.title):'Sua agenda')}</div></div>
     <button class="chipbtn" id="shareFree">Horários livres</button></div>
@@ -909,9 +935,10 @@ function renderAgenda(){
     <button class="iconbtn" id="wPrev" aria-label="Semana anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg></button>
     <button class="chipbtn" id="wToday">Hoje</button>
     <button class="iconbtn" id="wNext" aria-label="Próxima semana"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg></button></div></div>
-  <div class="week">${days.map(d=>{const dd=parse(d);const ap=S.appts.filter(a=>a.date===d&&a.status!=='cancelado');const pls=[...new Set(ap.map(a=>place(a.placeId)?.color).filter(Boolean))].slice(0,3);
-    return `<button class="day ${d===ui.sel?'sel':''} ${d===todayISO()?'today':''}" data-d="${d}"><span class="dw">${WD[dd.getDay()]}</span><span class="dn">${dd.getDate()}</span><span class="dots">${pls.map(c=>`<i style="background:${d===ui.sel?'var(--accent-ink)':`${cv(c)}`}"></i>`).join('')}</span></button>`}).join('')}</div>
+  <div class="week">${days.map(d=>{const dd=parse(d);const ap=S.appts.filter(a=>a.date===d&&a.status!=='cancelado');const pls=[...new Set(ap.map(a=>place(a.placeId)?.color).filter(Boolean))].slice(0,3);const h=nationalHoliday(d);
+    return `<button class="day ${d===ui.sel?'sel':''} ${d===todayISO()?'today':''}" data-d="${d}"><span class="dw">${WD[dd.getDay()]}</span><span class="dn ${h?'hol':''}" title="${h?esc(h):''}">${dd.getDate()}</span><span class="dots">${pls.map(c=>`<i style="background:${d===ui.sel?'var(--accent-ink)':`${cv(c)}`}"></i>`).join('')}</span></button>`}).join('')}</div>
   <div class="dayhead"><h2>${ui.sel===todayISO()?'Hoje':cap(WDL[sel.getDay()])}, ${sel.getDate()} de ${MES[sel.getMonth()]}</h2><span class="muted small num">${act.length} ${act.length===1?'atendimento':'atendimentos'} · ${free.length} livres</span></div>
+  ${hol?`<div class="banner">Feriado: ${esc(hol)}${S.settings.blockHolidays===false?' · horários livres continuam aparecendo (desligado em Ajustes)':' · sem horários livres hoje'}</div>`:''}
   ${blocks.map(e=>`<div class="banner">${e.allDay?'Dia bloqueado':`Bloqueado ${e.s}–${e.e}`}${e.placeId?' em '+esc(place(e.placeId)?.name||''):''}${e.note?' · '+esc(e.note):''}</div>`).join('')}
   <div class="list">${items.length?items.map(it=>it.k==='a'?apptCard(it.a):freeCard(it.f)).join(''):`<div class="empty"><b>Nenhum horário neste dia</b>Não há atendimento previsto para ${WDL[sel.getDay()]}. Toque em Agendar para marcar mesmo assim, ou ajuste na aba Horários.</div>`}</div>`;
   app.querySelectorAll('.day').forEach(b=>b.onclick=()=>{ui.sel=b.dataset.d;render()});
@@ -1047,8 +1074,8 @@ function editAppt(id,pre={}){
       $b('#slotLbl').textContent=`Horários livres em ${place(placeId).name}`;
       $b('#fSlots').innerHTML=fs.length?fs.map(f=>`<button type="button" class="slot ${f.time===t?'on':''}" data-t="${f.time}">${f.time}</button>`).join(''):`<span class="small muted">Nenhum horário livre neste dia. Você pode digitar um horário acima.</span>`;
       b.querySelectorAll('.slot').forEach(s=>s.onclick=()=>{$b('#fTime').value=s.dataset.t;slots()});warn()};
-    const warn=()=>{const d=$b('#fDate').value,t=$b('#fTime').value;const c=d&&t&&conflict(d,t,$b('#fDur').value,id);
-      $b('#fWarn').innerHTML=c?`<div class="notice">Atenção: esse horário bate com ${esc(patient(c.patientId)?.name||'outro atendimento')} às ${c.time} (${esc(place(c.placeId)?.name||'')}).</div>`:''};
+    const warn=()=>{const d=$b('#fDate').value,t=$b('#fTime').value;const c=d&&t&&conflict(d,t,$b('#fDur').value,id);const h=d&&nationalHoliday(d);
+      $b('#fWarn').innerHTML=(h?`<div class="notice">Atenção: ${esc(h)} é feriado.</div>`:'')+(c?`<div class="notice">Atenção: esse horário bate com ${esc(patient(c.patientId)?.name||'outro atendimento')} às ${c.time} (${esc(place(c.placeId)?.name||'')}).</div>`:'')};
     $b('#fDur').value=a.dur||'';$b('#fPrice').value=a.price??'';
     fillIns();
     b.querySelectorAll('#fPlace button').forEach(x=>x.onclick=()=>setPlace(x.dataset.v));
@@ -1703,6 +1730,10 @@ function renderSetAtendimento(body){
     <div class="small muted">Cadastre quanto você recebe por sessão em cada convênio. Se o valor muda de uma clínica para outra, informe por local.</div>
     ${S.insurers.length?`<div class="rows">${S.insurers.map(i=>{const diff=S.places.filter(p=>i.prices&&i.prices[p.id]!==undefined&&i.prices[p.id]!=='');return `<button class="row" data-ins="${i.id}"><span class="avatar" style="width:34px;height:34px;font-size:13px">${esc(initials(i.name))}</span><span class="grow"><b>${esc(i.name)}</b><span class="small muted num">${money(i.price)} por sessão${diff.length?` · ${diff.length} local(is) com valor próprio`:''}</span></span><span class="chev">›</span></button>`}).join('')}</div>`:'<div class="empty"><b>Nenhum convênio ainda</b>Adicione os convênios que você atende, como CIMED ou Unimed.</div>'}
     <button class="btn soft block" id="addIns">+ Adicionar convênio</button></div>
+  <div class="section" style="margin-bottom:10px"><div class="label">Feriados nacionais</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <label class="toggle"><span>Não mostrar horários livres em feriados</span><input type="checkbox" id="sHol" ${S.settings.blockHolidays!==false?'checked':''}></label>
+    <div class="small muted">Calculado automaticamente (feriados fixos + Carnaval, Sexta-feira Santa e Corpus Christi) — não precisa cadastrar nada. Com isso ligado, esses dias ficam sem horários livres pra marcar, mas você ainda pode agendar manualmente se precisar atender mesmo assim.</div>
+  </div></div>
   <div class="section" style="margin-bottom:10px"><div class="label">Mensagem geral de confirmação</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
     <textarea class="input" id="sMsg">${esc(S.settings.msg||DEFAULT_MSG)}</textarea>
     <div class="small muted">Usada nos locais sem mensagem própria. Cada clínica ou o particular pode ter a sua: toque no local acima. Use {paciente}, {dia}, {hora}, {local}, {endereco}, {info} e {profissional}.</div>
@@ -1711,6 +1742,7 @@ function renderSetAtendimento(body){
   app.querySelectorAll('[data-ins]').forEach(b=>b.onclick=()=>editInsurer(b.dataset.ins));
   $('#addPlace').onclick=()=>editPlace(null);
   $('#addIns').onclick=()=>editInsurer(null);
+  $('#sHol').onchange=e=>{S.settings.blockHolidays=e.target.checked;save();toast('Preferência salva')};
   $('#sMsg').onchange=e=>{S.settings.msg=e.target.value;save();toast('Mensagem salva')};
   $('#resetMsg').onclick=()=>{S.settings.msg=DEFAULT_MSG;save();render();toast('Texto padrão restaurado')};
 }
