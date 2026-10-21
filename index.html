@@ -353,6 +353,7 @@ const KEY='minha-agenda-v1';
 const COLORS=['p1','p2','p3','p4','p5','p6'];
 const WD=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const WDL=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+const WD_SHORT=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const MES=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
 const STATUS={agendado:'Agendado',confirmado:'Confirmado',concluido:'Atendido',faltou:'Faltou',cancelado:'Cancelado'};
 const DEFAULT_MSG='Olá, {paciente}! Passando para confirmar seu atendimento {dia} às {hora} em {local}. Posso confirmar?';
@@ -984,6 +985,10 @@ function editAppt(id,pre={}){
     ${id?'':`<div class="two">
       <label class="field"><span>Repetir</span><select class="input" id="fFreq"><option value="">Não repetir</option><option value="7">Toda semana</option><option value="14">A cada 15 dias</option></select></label>
       <label class="field" id="fCountWrap" hidden><span>Até quando</span><select class="input" id="fCount"><option value="4">4 vezes</option><option value="8" selected>8 vezes</option><option value="12">12 vezes</option><option value="24">24 vezes</option><option value="forever">Permanente (cancelo quando quiser)</option></select></label>
+    </div>
+    <div class="field" id="fWdWrap" hidden><span>Em quais dias</span>
+      <span class="small muted" style="font-weight:400">Marque mais de um dia se a pessoa tiver mais de uma sessão na semana.</span>
+      <div class="seg solid" id="fWd">${WD_SHORT.map((w,i)=>`<button type="button" data-v="${i}">${w}</button>`).join('')}</div>
     </div>`}
     <label class="field"><span>Observações</span><textarea class="input" id="fNotes" placeholder="Opcional">${esc(a.notes||'')}</textarea></label>
     <div id="fWarn"></div>
@@ -1010,7 +1015,19 @@ function editAppt(id,pre={}){
     b.querySelectorAll('#fPay button').forEach(x=>x.onclick=()=>setPay(x.dataset.v));
     $b('#fIns').onchange=()=>{insId=$b('#fIns').value;$b('#newIns').hidden=insId!=='__new';if(insId==='__new')$b('#niName').focus();autoPrice()};
     $b('#niPrice').oninput=autoPrice;
-    if($b('#fFreq'))$b('#fFreq').onchange=()=>{$b('#fCountWrap').hidden=!$b('#fFreq').value};
+    const wds=new Set();
+    const drawWd=()=>b.querySelectorAll('#fWd button').forEach(x=>x.classList.toggle('on',wds.has(+x.dataset.v)));
+    if($b('#fFreq'))$b('#fFreq').onchange=()=>{
+      const on=!!$b('#fFreq').value;
+      $b('#fCountWrap').hidden=!on;$b('#fWdWrap').hidden=!on;
+      if(on&&!wds.size){const d=$b('#fDate').value;if(d)wds.add(parse(d).getDay())}
+      drawWd();
+    };
+    if($b('#fWd'))b.querySelectorAll('#fWd button').forEach(x=>x.onclick=()=>{
+      const v=+x.dataset.v;
+      if(wds.has(v)){if(wds.size>1)wds.delete(v)}else wds.add(v);
+      drawWd();
+    });
     setPlace(placeId);setPay(pay);
     $b('#fDate').onchange=slots;$b('#fTime').oninput=slots;
     $b('#fDur').oninput=()=>{durTouched=true;warn()};$b('#fPrice').oninput=()=>priceTouched=true;
@@ -1044,7 +1061,19 @@ function editAppt(id,pre={}){
           // gera 2 anos de ocorrências pra frente, o que na prática não acaba
           // antes de precisar reagendar. Cancelar série some com o resto.
           const n=countVal==='forever'?Math.floor(730/freq)+1:+countVal;
-          for(let i=0;i<n;i++)S.appts.push({id:uid(),...base,date:iso(addDays(parse(date),freq*i)),status:'agendado',paid:false,seriesId});
+          const baseDate=parse(date),baseWd=baseDate.getDay();
+          const selWds=wds.size?[...wds]:[baseWd];
+          // freq é sempre múltiplo de 7, então somar freq*i preserva o dia da
+          // semana — dá pra gerar mais de um dia por ciclo (ex.: seg + qui)
+          // deslocando a partir desse âncora, cobrindo quem tem 2+ sessões/semana.
+          for(let i=0;i<n;i++){
+            const anchor=addDays(baseDate,freq*i);
+            for(const wd of selWds){
+              const occ=addDays(anchor,wd-baseWd);
+              if(i===0&&occ<baseDate)continue;
+              S.appts.push({id:uid(),...base,date:iso(occ),status:'agendado',paid:false,seriesId});
+            }
+          }
         }
       }
       save();ui.sel=date;ui.week=iso(startOfWeek(parse(date)));ui.tab='agenda';
