@@ -83,3 +83,15 @@ export function apptToJson(row: any) {
     notes: row.notes,
   };
 }
+
+export function userToMe(row: any) {
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    title: row.title,
+    regNumber: row.reg_number,
+    signature: row.signature,
+    emailVerified: Boolean(row.email_verified_at),
+  };
+}

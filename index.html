@@ -500,24 +500,32 @@ async function apiSignup(email,password,name,title){
   const r=await apiFetch('/auth/signup',{method:'POST',body:JSON.stringify({email,password,name,title})});
   setAuth({token:r.token,email});
 }
-async function apiLogin(email,password){
-  const r=await apiFetch('/auth/login',{method:'POST',body:JSON.stringify({email,password})});
-  setAuth({token:r.token,email});
-}
-
-const RESOURCE_PATHS={places:'/places',insurers:'/insurers',patients:'/patients',appts:'/appts',exceptions:'/exceptions',records:'/records'};
-const patientForApi=p=>{const r=Object.assign({},p);delete r.records;return r};
-
-async function pullAll(){
-  const[me,places,patientsRaw,insurers,appts,exceptions,records]=await Promise.all([
-    apiFetch('/auth/me'),apiFetch('/places'),apiFetch('/patients'),apiFetch('/insurers'),apiFetch('/appts'),apiFetch('/exceptions'),apiFetch('/records')
-  ]);
+// Monta o S a partir de uma resposta "full" (?full=1) — perfil + todos os
+// recursos numa chamada só, em vez de 7 separadas (ver api/auth/login.ts e
+// api/auth/me.ts): o custo de cada requisição extra é alto, principalmente
+// no vercel dev local, que não paraleliza bem várias invocações ao mesmo tempo.
+function stateFromBootstrap(data){
+  const{me,places,patients:patientsRaw,insurers,appts,exceptions,records}=data;
   const byPatient={};
   records.forEach(r=>{const rec=Object.assign({},r);const pid=rec.patientId;delete rec.patientId;(byPatient[pid]=byPatient[pid]||[]).push(rec)});
   const patients=patientsRaw.map(p=>Object.assign({},p,{records:byPatient[p.id]||[]}));
   setSyncIds({places:places.map(x=>x.id),insurers:insurers.map(x=>x.id),patients:patients.map(x=>x.id),appts:appts.map(x=>x.id),exceptions:exceptions.map(x=>x.id),records:records.map(x=>x.id)});
   const settings=(S&&S.settings)||{msg:DEFAULT_MSG};
   return{v:2,profile:{name:me.name,title:me.title||'',regNumber:me.regNumber||'',signature:me.signature||'',emailVerified:!!me.emailVerified},places,patients,appts,insurers,exceptions,settings};
+}
+async function apiLogin(email,password){
+  // ?full=1: o login já devolve o perfil e todos os recursos junto com o
+  // token — evita uma segunda chamada (GET /auth/me?full=1) logo em seguida.
+  const r=await apiFetch('/auth/login?full=1',{method:'POST',body:JSON.stringify({email,password})});
+  setAuth({token:r.token,email});
+  return stateFromBootstrap(r);
+}
+
+const RESOURCE_PATHS={places:'/places',insurers:'/insurers',patients:'/patients',appts:'/appts',exceptions:'/exceptions',records:'/records'};
+const patientForApi=p=>{const r=Object.assign({},p);delete r.records;return r};
+
+async function pullAll(){
+  return stateFromBootstrap(await apiFetch('/auth/me?full=1'));
 }
 
 let syncing=false,syncAgain=false;
@@ -787,7 +795,7 @@ function onboarding(){
         const email=$('#liEmail').value.trim(),password=$('#liPassword').value;
         if(!email||!password){toast('Preencha e-mail e senha');return}
         const btn=$('#liGo');btn.disabled=true;
-        try{await apiLogin(email,password);S=await pullAll();save();render();toast('Bem-vinda de volta!')}
+        try{S=await apiLogin(email,password);save();render();toast('Bem-vinda de volta!')}
         catch(e){btn.disabled=false;toast('E-mail ou senha incorretos')}
       };
     }
