@@ -100,6 +100,10 @@ create table if not exists appts (
 );
 create index if not exists appts_user_id_idx on appts(user_id);
 create index if not exists appts_date_idx on appts(user_id, date);
+-- Agrupa as ocorrências de um atendimento recorrente (quinzenal, permanente...),
+-- pra dar pra cancelar a série inteira de uma vez em vez de uma por uma.
+alter table appts add column if not exists series_id uuid;
+create index if not exists appts_series_id_idx on appts(series_id) where series_id is not null;
 
 create table if not exists exceptions (
   id uuid primary key default gen_random_uuid(),

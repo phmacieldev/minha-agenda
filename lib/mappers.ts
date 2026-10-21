@@ -81,6 +81,7 @@ export function apptToJson(row: any) {
     status: row.status,
     paid: row.paid,
     notes: row.notes,
+    seriesId: row.series_id,
   };
 }
 

@@ -942,6 +942,7 @@ function viewAppt(id){
     <label class="toggle"><span>${a.pay==='convenio'?'Repasse recebido da clínica/convênio':'Pagamento recebido'}</span><input type="checkbox" id="paid" ${a.paid?'checked':''}></label>
     <div class="btnrow"><button class="btn soft" id="evo">${(p?.records||[]).some(r=>r.apptId===a.id)?'Ver evolução':'Registrar evolução'}</button><button class="btn ghost" id="pProf">Perfil do paciente</button></div>
     <div class="btnrow"><button class="btn soft" id="edit">Editar ou remarcar</button><button class="btn ghost" id="again">Agendar retorno</button></div>
+    ${a.seriesId&&S.appts.some(x=>x.seriesId===a.seriesId&&x.date>=todayISO()&&x.status!=='cancelado')?`<button class="btn danger block" id="cancelSeries">Cancelar série</button>`:''}
     <button class="btn danger block" id="del">Excluir atendimento</button>`,b=>{
     b.querySelectorAll('#stSeg button').forEach(x=>x.onclick=()=>{a.status=x.dataset.s;save();render();viewAppt(id);toast('Marcado como '+STATUS[a.status].toLowerCase())});
     b.querySelector('#paid').onchange=e=>{a.paid=e.target.checked;save();render()};
@@ -950,6 +951,12 @@ function viewAppt(id){
     b.querySelector('#evo').onclick=()=>{const r=(p?.records||[]).find(r=>r.apptId===a.id);editRecord(a.patientId,r?.id||null,{apptId:a.id,date:a.date,placeId:a.placeId})};
     b.querySelector('#pProf').onclick=()=>viewPatient(a.patientId);
     b.querySelector('#again').onclick=()=>editAppt(null,{patientId:a.patientId,placeId:a.placeId,date:iso(addDays(parse(a.date),7)),time:a.time,pay:a.pay,insurerId:a.insurerId});
+    const cs=b.querySelector('#cancelSeries');
+    if(cs)twoTap(cs,'Cancelar série','Toque de novo para cancelar os atendimentos futuros',()=>{
+      const today=todayISO();
+      S.appts.forEach(x=>{if(x.seriesId===a.seriesId&&x.date>=today&&x.status!=='cancelado')x.status='cancelado'});
+      save();closeSheet();render();toast('Série cancelada a partir de hoje');
+    });
     twoTap(b.querySelector('#del'),'Excluir atendimento','Toque de novo para excluir',()=>{S.appts=S.appts.filter(x=>x.id!==id);save();closeSheet();render();toast('Atendimento excluído')});
   });
 }
@@ -974,7 +981,10 @@ function editAppt(id,pre={}){
         <span class="small muted" style="font-weight:400">O valor é o que você recebe por sessão. Dá para ter valores diferentes por clínica em Ajustes › Convênios.</span></div></div>
     <div class="two"><label class="field"><span>Duração (min)</span><input class="input num" id="fDur" type="number" inputmode="numeric" min="5" step="5"></label>
     <label class="field"><span id="priceLbl">Valor (R$)</span><input class="input num" id="fPrice" type="number" inputmode="decimal" min="0" step="0.01"></label></div>
-    ${id?'':`<label class="field"><span>Repetir toda semana</span><select class="input" id="fRep"><option value="1">Não repetir</option>${[2,3,4,6,8,10,12].map(n=>`<option value="${n}">${n} semanas seguidas</option>`).join('')}</select></label>`}
+    ${id?'':`<div class="two">
+      <label class="field"><span>Repetir</span><select class="input" id="fFreq"><option value="">Não repetir</option><option value="7">Toda semana</option><option value="14">A cada 15 dias</option></select></label>
+      <label class="field" id="fCountWrap" hidden><span>Até quando</span><select class="input" id="fCount"><option value="4">4 vezes</option><option value="8" selected>8 vezes</option><option value="12">12 vezes</option><option value="24">24 vezes</option><option value="forever">Permanente (cancelo quando quiser)</option></select></label>
+    </div>`}
     <label class="field"><span>Observações</span><textarea class="input" id="fNotes" placeholder="Opcional">${esc(a.notes||'')}</textarea></label>
     <div id="fWarn"></div>
     <button class="btn primary block" id="fSave">${id?'Salvar alterações':'Agendar'}</button>`,b=>{
@@ -1000,6 +1010,7 @@ function editAppt(id,pre={}){
     b.querySelectorAll('#fPay button').forEach(x=>x.onclick=()=>setPay(x.dataset.v));
     $b('#fIns').onchange=()=>{insId=$b('#fIns').value;$b('#newIns').hidden=insId!=='__new';if(insId==='__new')$b('#niName').focus();autoPrice()};
     $b('#niPrice').oninput=autoPrice;
+    if($b('#fFreq'))$b('#fFreq').onchange=()=>{$b('#fCountWrap').hidden=!$b('#fFreq').value};
     setPlace(placeId);setPay(pay);
     $b('#fDate').onchange=slots;$b('#fTime').oninput=slots;
     $b('#fDur').oninput=()=>{durTouched=true;warn()};$b('#fPrice').oninput=()=>priceTouched=true;
@@ -1023,7 +1034,19 @@ function editAppt(id,pre={}){
       p.pay=pay;p.insurerId=ins?.id||'';
       const base={patientId:p.id,placeId,time,dur:+$b('#fDur').value||place(placeId).duration||50,price:+$b('#fPrice').value||0,pay,insurerId:ins?.id||'',insName:ins?.name||'',notes:$b('#fNotes').value.trim()};
       if(id){Object.assign(S.appts.find(x=>x.id===id),base,{date})}
-      else{const rep=+($b('#fRep')?.value||1);for(let i=0;i<rep;i++)S.appts.push({id:uid(),...base,date:iso(addDays(parse(date),7*i)),status:'agendado',paid:false})}
+      else{
+        const freq=+($b('#fFreq')?.value||0);
+        if(!freq){S.appts.push({id:uid(),...base,date,status:'agendado',paid:false})}
+        else{
+          const countVal=$b('#fCount')?.value||'8';
+          const seriesId=uid();
+          // "Permanente" não é infinito de verdade (o array não comporta isso) —
+          // gera 2 anos de ocorrências pra frente, o que na prática não acaba
+          // antes de precisar reagendar. Cancelar série some com o resto.
+          const n=countVal==='forever'?Math.floor(730/freq)+1:+countVal;
+          for(let i=0;i<n;i++)S.appts.push({id:uid(),...base,date:iso(addDays(parse(date),freq*i)),status:'agendado',paid:false,seriesId});
+        }
+      }
       save();ui.sel=date;ui.week=iso(startOfWeek(parse(date)));ui.tab='agenda';
       closeSheet();render();toast(id?'Alterações salvas':'Atendimento agendado');
     };
