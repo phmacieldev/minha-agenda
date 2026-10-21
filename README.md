@@ -117,7 +117,7 @@ Se mudar o schema (`supabase/schema.sql`) depois de já ter subido o banco uma v
 - `GET /api/auth/me` — header `Authorization: Bearer <token>` → dados da usuária logada, incluindo `emailVerified`
 - `GET /api/auth/verify?token=<token>` — confirma o e-mail (é o link que vem no e-mail; retorna uma página HTML simples, não JSON)
 - `POST /api/auth/verify` — header `Authorization: Bearer <token>` → reenvia o e-mail de confirmação para quem ainda não confirmou
-- `PUT` ou `PATCH /api/auth/me` — header `Authorization: Bearer <token>`, body `{ name?, title? }` → atualiza o perfil
+- `PUT` ou `PATCH /api/auth/me` — header `Authorization: Bearer <token>`, body `{ name?, title?, regNumber?, signature? }` → atualiza o perfil (`signature` é a assinatura/carimbo, como data URL já comprimida no cliente)
 - `PUT` ou `PATCH /api/auth/me?action=password` — body `{ currentPassword, newPassword }` → troca a senha
 - `places`, `patients`, `appts`, `insurers`, `exceptions`, `records` — todos com o mesmo padrão, exigindo `Authorization: Bearer <token>`:
   - `GET /api/{recurso}` — lista (appts e exceptions aceitam `?from=YYYY-MM-DD&to=YYYY-MM-DD`; appts também aceita `?placeId=`; records aceita `?patientId=`)
