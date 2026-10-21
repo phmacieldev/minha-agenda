@@ -1099,6 +1099,9 @@ function editRecord(patientId,recId,pre={}){
 function signBlock(extra){
   return `<div class="sign">${S.profile.signature?`<img src="${S.profile.signature}" alt="Assinatura" style="max-width:220px;max-height:90px;display:block;margin:0 auto 6px">`:'<div class="line"></div>'}${esc(S.profile.name)}${S.profile.title?'<br>'+esc(S.profile.title):''}${S.profile.regNumber?'<br>'+esc(S.profile.regNumber):''}${extra?'<br>'+extra:''}</div>`;
 }
+function letterheadBlock(pl){
+  return pl&&pl.letterhead?`<img src="${pl.letterhead}" alt="Timbre" style="max-width:100%;display:block;margin:0 auto 18px">`:'';
+}
 function patientReport(p,{from,to,placeId,ev}){
   const inR=d=>(!from||d>=from)&&(!to||d<=to);
   const ap=S.appts.filter(a=>a.patientId===p.id&&inR(a.date)&&(!placeId||a.placeId===placeId)).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
@@ -1112,7 +1115,7 @@ function patientReport(p,{from,to,placeId,ev}){
   if(miss.length)L.push(`Faltas: ${miss.length} (${miss.map(a=>fmtDate(a.date)).join(', ')})`);
   if(ev){L.push('','EVOLUÇÕES');if(!recs.length)L.push('Nenhuma evolução registrada no período.');recs.forEach(r=>{L.push('',`${brDate(r.date)}${r.placeId&&place(r.placeId)?' – '+place(r.placeId).name:''}`,r.text)})}
   L.push('',`${S.profile.name}${S.profile.title?' – '+S.profile.title:''}`,`Emitido em ${brDate(todayISO())}`);
-  const html=`<h1>Relatório de atendimento</h1><table class="kv">${info.map(([k,v])=>`<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}<tr><th>Período</th><td>${esc(per)}</td></tr><tr><th>Sessões realizadas</th><td>${done.length}${done.length?' – '+done.map(a=>fmtDate(a.date)).join(', '):''}</td></tr>${miss.length?`<tr><th>Faltas</th><td>${miss.length} – ${miss.map(a=>fmtDate(a.date)).join(', ')}</td></tr>`:''}</table>
+  const html=`${letterheadBlock(pl)}<h1>Relatório de atendimento</h1><table class="kv">${info.map(([k,v])=>`<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}<tr><th>Período</th><td>${esc(per)}</td></tr><tr><th>Sessões realizadas</th><td>${done.length}${done.length?' – '+done.map(a=>fmtDate(a.date)).join(', '):''}</td></tr>${miss.length?`<tr><th>Faltas</th><td>${miss.length} – ${miss.map(a=>fmtDate(a.date)).join(', ')}</td></tr>`:''}</table>
     ${ev?`<h2>Evoluções</h2>${recs.length?recs.map(r=>`<div class="ev"><b>${brDate(r.date)}${r.placeId&&place(r.placeId)?' – '+esc(place(r.placeId).name):''}</b><p>${esc(r.text)}</p></div>`).join(''):'<p>Nenhuma evolução registrada no período.</p>'}`:''}
     ${signBlock(`<small>Emitido em ${brDate(todayISO())}</small>`)}`;
   return{text:L.join('\n'),html};
@@ -1128,7 +1131,7 @@ function clinicReport(placeId,R){
   const L=[`RELATÓRIO DE PACIENTES – ${pl.name.toUpperCase()}`,`Período: ${brDate(R.pr.start)} a ${brDate(R.pr.end)}`,`Profissional: ${S.profile.name}${S.profile.title?' – '+S.profile.title:''}`,`Pacientes: ${rows.length} · Sessões realizadas: ${rows.reduce((s,r)=>s+r.done.length,0)}`];
   rows.forEach(r=>{const a=ageOf(r.p.birth);L.push('',`• ${r.p.name}${a!==null?` (${a} anos)`:''} – ${r.pay}${r.p.card?' · carteirinha '+r.p.card:''}`,`  Sessões: ${r.done.length}${r.done.length?' ('+r.done.map(x=>fmtDate(x.date)).join(', ')+')':''}${r.miss.length?` · Faltas: ${r.miss.length}`:''}`);
     if(r.p.diag)L.push(`  Motivo: ${r.p.diag}`);if(r.last)L.push(`  Última evolução (${fmtDate(r.last.date)}): ${r.last.text.replace(/\s*\n\s*/g,' ').slice(0,280)}`)});
-  const html=`<h1>Relatório de pacientes – ${esc(pl.name)}</h1><p class="meta">Período: ${brDate(R.pr.start)} a ${brDate(R.pr.end)} · Profissional: ${esc(S.profile.name)}${S.profile.title?' – '+esc(S.profile.title):''}</p>
+  const html=`${letterheadBlock(pl)}<h1>Relatório de pacientes – ${esc(pl.name)}</h1><p class="meta">Período: ${brDate(R.pr.start)} a ${brDate(R.pr.end)} · Profissional: ${esc(S.profile.name)}${S.profile.title?' – '+esc(S.profile.title):''}</p>
     <table class="grid"><thead><tr><th>Paciente</th><th>Pagamento</th><th>Sessões</th><th>Datas</th><th>Faltas</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.p.name)}${ageOf(r.p.birth)!==null?`<br><small>${ageOf(r.p.birth)} anos</small>`:''}</td><td>${esc(r.pay)}${r.p.card?`<br><small>${esc(r.p.card)}</small>`:''}</td><td>${r.done.length}</td><td>${r.done.map(x=>fmtDate(x.date)).join(', ')}</td><td>${r.miss.length||''}</td></tr>`).join('')}</tbody></table>
     ${rows.some(r=>r.last||r.p.diag)?`<h2>Resumo clínico</h2>${rows.filter(r=>r.last||r.p.diag).map(r=>`<div class="ev"><b>${esc(r.p.name)}</b>${r.p.diag?`<p><i>Motivo:</i> ${esc(r.p.diag)}</p>`:''}${r.last?`<p><i>Última evolução (${fmtDate(r.last.date)}):</i> ${esc(r.last.text)}</p>`:''}</div>`).join('')}`:''}
     ${signBlock()}`;
@@ -1533,6 +1536,12 @@ function editPlace(id){
     <div class="two"><label class="field"><span>Valor particular (R$)</span><input class="input num" id="lPrice" type="number" inputmode="decimal" min="0" step="0.01" value="${p.price||''}"></label>
     <label class="field"><span>Duração (min)</span><input class="input num" id="lDur" type="number" inputmode="numeric" min="5" step="5" value="${p.duration||50}"></label></div>
     <div class="field"><span>Cor do local</span><div class="crow"><span class="cprev" id="lSw" style="background:${cv(p.color)}"></span><button type="button" class="btn ghost" id="lColBtn">Alterar cor</button></div><div class="cpick obpick" id="lColor" hidden></div></div>
+    <div class="field"><span>Modelo timbrado deste local (opcional)</span>
+      <div class="small muted" style="font-weight:400">Aparece no topo dos relatórios/guias gerados para este local, junto com sua assinatura e registro (em Ajustes › Perfil).</div>
+      <div id="lLhPreview">${p.letterhead?`<img src="${p.letterhead}" alt="Timbre" style="max-width:100%;max-height:120px;border-radius:10px;border:1px solid var(--line);background:#fff;padding:6px;display:block">`:'<div class="small muted">Nenhum modelo enviado ainda.</div>'}</div>
+      <div class="btnrow"><label class="btn soft" for="lLhFile" style="cursor:pointer">Enviar imagem</label><button type="button" class="btn ghost" id="lLhRemove" ${p.letterhead?'':'hidden'}>Remover</button></div>
+      <input type="file" id="lLhFile" accept="image/*" hidden>
+    </div>
     <label class="field"><span>Informações para o paciente (opcional)</span><textarea class="input" id="lInfo" placeholder="Ex.: Sala 3, 2º andar. Chegar 10 min antes e levar a carteirinha do convênio.">${esc(p.info||'')}</textarea></label>
     <div class="field"><span>Mensagem de confirmação deste local</span><textarea class="input" id="lMsg" style="min-height:110px">${esc(p.msg||placeMsgSuggestion(p))}</textarea>
       <span class="small muted" style="font-weight:400">{endereco} e {info} são preenchidos com os campos acima. Também valem {paciente}, {dia}, {hora}, {local} e {profissional}.</span>
@@ -1546,6 +1555,17 @@ function editPlace(id){
     $b('#lMsgReset').onclick=()=>{$b('#lMsg').value=S.settings.msg||DEFAULT_MSG};
     $b('#lColBtn').onclick=()=>{const box=$b('#lColor');if(!box.hidden){box.hidden=true;return}box.hidden=false;
       colorPicker(box,p.color,c=>{p.color=c;$b('#lSw').style.background=cv(c)},()=>{box.hidden=true;$b('#lColBtn').focus()})};
+    $b('#lLhFile').onchange=async e=>{
+      const f=e.target.files[0];if(!f)return;
+      try{
+        const dataUrl=await compressImage(f,700,0.85);
+        p.letterhead=dataUrl;
+        $b('#lLhPreview').innerHTML=`<img src="${dataUrl}" alt="Timbre" style="max-width:100%;max-height:120px;border-radius:10px;border:1px solid var(--line);background:#fff;padding:6px;display:block">`;
+        $b('#lLhRemove').hidden=false;
+        toast('Modelo timbrado pronto — toque em Salvar local');
+      }catch(err){toast('Não consegui processar essa imagem')}
+    };
+    $b('#lLhRemove').onclick=()=>{p.letterhead='';$b('#lLhPreview').innerHTML='<div class="small muted">Nenhum modelo enviado ainda.</div>';$b('#lLhRemove').hidden=true};
     $b('#lSave').onclick=()=>{
       p.name=$b('#lName').value.trim();if(!p.name){toast('Dê um nome ao local');$b('#lName').focus();return}
       p.address=$b('#lAddr').value.trim();p.price=+$b('#lPrice').value||0;p.duration=+$b('#lDur').value||50;

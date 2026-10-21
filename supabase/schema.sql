@@ -40,6 +40,8 @@ create table if not exists places (
   created_at timestamptz not null default now()
 );
 create index if not exists places_user_id_idx on places(user_id);
+-- Modelo timbrado deste local, usado no topo dos relatórios/guias gerados.
+alter table places add column if not exists letterhead text;
 
 create table if not exists insurers (
   id uuid primary key default gen_random_uuid(),
