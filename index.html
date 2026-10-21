@@ -236,9 +236,15 @@ pre.share{white-space:pre-wrap;background:var(--surface);border:1px solid var(--
 #printArea .sign{margin-top:48px;text-align:center}
 #printArea .sign .line{width:260px;border-top:1px solid #1e1b2e;margin:0 auto 6px}
 @media print{
+  @page{margin:14mm 12mm}
   body>*:not(#printArea){display:none!important}
   #printArea{position:static;overflow:visible}
   #printArea .pdBar{display:none}
+  /* Evita quebrar uma evolução, a tabela ou a assinatura no meio entre duas
+     páginas, e repete o cabeçalho da tabela de pacientes em listas longas. */
+  #printArea .ev,#printArea .sign,#printArea .kv tr,#printArea .grid tr{page-break-inside:avoid;break-inside:avoid}
+  #printArea h1,#printArea h2{page-break-after:avoid;break-after:avoid}
+  #printArea .grid thead{display:table-header-group}
 }
 .toast.show{opacity:1;transform:translate(-50%,0)}
 
@@ -423,14 +429,14 @@ const accentPreview=k=>ACCENT_HEX[k]||ACCENT_HEX.rosa;
    usa os arquivos da raiz (já citados pelo service worker); os demais ficam
    em icons/<profissão>/ e só entram em jogo se a pessoa trocar. */
 const ICON_PROFESSIONS=[
-  {key:'fonoaudiologia',name:'Fonoaudiologia'},
-  {key:'fisioterapia',name:'Fisioterapia'},
-  {key:'psicologia',name:'Psicologia'},
-  {key:'psiquiatria',name:'Psiquiatria'},
-  {key:'nutricao',name:'Nutrição'},
-  {key:'psicopedagogia',name:'Psicopedagogia'},
-  {key:'pediatria',name:'Pediatria'},
-  {key:'terapia-ocupacional',name:'Terapia ocupacional'},
+  {key:'fonoaudiologia',name:'Fonoaudiologia',title:'Fonoaudiólogo(a)'},
+  {key:'fisioterapia',name:'Fisioterapia',title:'Fisioterapeuta'},
+  {key:'psicologia',name:'Psicologia',title:'Psicólogo(a)'},
+  {key:'psiquiatria',name:'Psiquiatria',title:'Psiquiatra'},
+  {key:'nutricao',name:'Nutrição',title:'Nutricionista'},
+  {key:'psicopedagogia',name:'Psicopedagogia',title:'Psicopedagogo(a)'},
+  {key:'pediatria',name:'Pediatria',title:'Pediatra'},
+  {key:'terapia-ocupacional',name:'Terapia ocupacional',title:'Terapeuta ocupacional'},
 ];
 const iconBase=key=>(!key||key==='fonoaudiologia')?'':'icons/'+key+'/';
 let lastManifestUrl=null;
@@ -494,24 +500,32 @@ async function apiSignup(email,password,name,title){
   const r=await apiFetch('/auth/signup',{method:'POST',body:JSON.stringify({email,password,name,title})});
   setAuth({token:r.token,email});
 }
-async function apiLogin(email,password){
-  const r=await apiFetch('/auth/login',{method:'POST',body:JSON.stringify({email,password})});
-  setAuth({token:r.token,email});
-}
-
-const RESOURCE_PATHS={places:'/places',insurers:'/insurers',patients:'/patients',appts:'/appts',exceptions:'/exceptions',records:'/records'};
-const patientForApi=p=>{const r=Object.assign({},p);delete r.records;return r};
-
-async function pullAll(){
-  const[me,places,patientsRaw,insurers,appts,exceptions,records]=await Promise.all([
-    apiFetch('/auth/me'),apiFetch('/places'),apiFetch('/patients'),apiFetch('/insurers'),apiFetch('/appts'),apiFetch('/exceptions'),apiFetch('/records')
-  ]);
+// Monta o S a partir de uma resposta "full" (?full=1) — perfil + todos os
+// recursos numa chamada só, em vez de 7 separadas (ver api/auth/login.ts e
+// api/auth/me.ts): o custo de cada requisição extra é alto, principalmente
+// no vercel dev local, que não paraleliza bem várias invocações ao mesmo tempo.
+function stateFromBootstrap(data){
+  const{me,places,patients:patientsRaw,insurers,appts,exceptions,records}=data;
   const byPatient={};
   records.forEach(r=>{const rec=Object.assign({},r);const pid=rec.patientId;delete rec.patientId;(byPatient[pid]=byPatient[pid]||[]).push(rec)});
   const patients=patientsRaw.map(p=>Object.assign({},p,{records:byPatient[p.id]||[]}));
   setSyncIds({places:places.map(x=>x.id),insurers:insurers.map(x=>x.id),patients:patients.map(x=>x.id),appts:appts.map(x=>x.id),exceptions:exceptions.map(x=>x.id),records:records.map(x=>x.id)});
   const settings=(S&&S.settings)||{msg:DEFAULT_MSG};
   return{v:2,profile:{name:me.name,title:me.title||'',regNumber:me.regNumber||'',signature:me.signature||'',emailVerified:!!me.emailVerified},places,patients,appts,insurers,exceptions,settings};
+}
+async function apiLogin(email,password){
+  // ?full=1: o login já devolve o perfil e todos os recursos junto com o
+  // token — evita uma segunda chamada (GET /auth/me?full=1) logo em seguida.
+  const r=await apiFetch('/auth/login?full=1',{method:'POST',body:JSON.stringify({email,password})});
+  setAuth({token:r.token,email});
+  return stateFromBootstrap(r);
+}
+
+const RESOURCE_PATHS={places:'/places',insurers:'/insurers',patients:'/patients',appts:'/appts',exceptions:'/exceptions',records:'/records'};
+const patientForApi=p=>{const r=Object.assign({},p);delete r.records;return r};
+
+async function pullAll(){
+  return stateFromBootstrap(await apiFetch('/auth/me?full=1'));
 }
 
 let syncing=false,syncAgain=false;
@@ -697,12 +711,16 @@ const OB_STEPS=['Sobre você','Onde você atende','Criar acesso'];
 function onboarding(){
   $('#tabs').hidden=true;$('#fab').hidden=true;
   let places=[{name:'Local 1',color:'p1'},{name:'Local 2',color:'p4'},{name:'Particular',color:'p5'}];
-  let openCol=-1,obName='',obTitle='',obEmail='',obPassword='',mode='signup',step=1;
+  let openCol=-1,obName='',obEmail='',obPassword='',obIcon='fonoaudiologia',mode='signup',step=1;
   const draw=()=>{
     const enterTarget=mode!=='signup'?'#liGo':step<3?'#obNext':'#obGo';
     const stepHtml=step===1?`
         <label class="field"><span>Seu nome</span><input class="input" id="obName" placeholder="Ex.: Ana Souza" autocomplete="name"></label>
-        <label class="field"><span>Profissão (opcional)</span><input class="input" id="obTitle" placeholder="Ex.: Fisioterapeuta"></label>
+        <label class="field"><span>Profissão</span><select class="input" id="obTitle">${ICON_PROFESSIONS.map(p=>`<option value="${p.key}">${esc(p.title)}</option>`).join('')}</select></label>
+        <div class="field"><span>Ícone do app</span>
+          <span class="small muted" style="font-weight:400">Dá pra trocar depois em Ajustes, mas escolher certo aqui já evita ter que reinstalar o atalho da tela de início pra pegar o ícone novo.</span>
+          <div class="iconpick" id="obIconPick">${ICON_PROFESSIONS.map(p=>`<button type="button" data-v="${p.key}"><img src="${iconBase(p.key)?iconBase(p.key)+'icon-192.png':'icon-192.png?v=fono2'}" alt=""><span>${esc(p.name)}</span></button>`).join('')}</div>
+        </div>
         <button class="btn primary block" id="obNext">Continuar</button>
       `:step===2?`
         <div class="field"><span>Onde você atende</span>
@@ -733,12 +751,17 @@ function onboarding(){
     segSelect($('#obMode'),mode);
     $('#obMode').querySelectorAll('button').forEach(b=>b.onclick=()=>{mode=b.dataset.v;step=1;draw()});
     if(mode==='signup'&&step===1){
-      $('#obName').value=obName;$('#obTitle').value=obTitle;
-      $('#obName').oninput=e=>obName=e.target.value;$('#obTitle').oninput=e=>obTitle=e.target.value;
+      $('#obName').value=obName;$('#obTitle').value=obIcon;
+      $('#obName').oninput=e=>obName=e.target.value;
+      // Profissão e ícone são a mesma escolha — selecionar um atualiza o outro,
+      // assim não dá pra ficar com perfil e ícone descombinando.
+      $('#obTitle').onchange=e=>{obIcon=e.target.value;$('#obIconPick').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.v===obIcon))};
+      $('#obIconPick').querySelectorAll('button').forEach(b=>{b.classList.toggle('on',b.dataset.v===obIcon);
+        b.onclick=()=>{obIcon=b.dataset.v;$('#obIconPick').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));$('#obTitle').value=obIcon}});
       $('#obNext').onclick=()=>{
         const name=$('#obName').value.trim();
         if(!name){toast('Escreva seu nome');$('#obName').focus();return}
-        obName=name;obTitle=$('#obTitle').value.trim();step=2;draw();
+        obName=name;step=2;draw();
       };
     }else if(mode==='signup'&&step===2){
       app.querySelectorAll('[data-pi]').forEach(inp=>inp.oninput=()=>places[+inp.dataset.pi].name=inp.value);
@@ -762,10 +785,11 @@ function onboarding(){
         const email=$('#obEmail').value.trim(),password=$('#obPassword').value;
         if(!email||!password){toast('Preencha e-mail e senha');return}
         const btn=$('#obGo');btn.disabled=true;
-        try{await apiSignup(email,password,obName,obTitle)}
+        const title=(ICON_PROFESSIONS.find(p=>p.key===obIcon)||{}).title||'';
+        try{await apiSignup(email,password,obName,title)}
         catch(e){btn.disabled=false;toast(e.body&&e.body.error==='email_in_use'?'Esse e-mail já tem conta':(e.body&&e.body.error==='invalid_input'?'Confira o e-mail e a senha (mínimo 6 caracteres)':'Não consegui criar a conta. Tente de novo.'));return}
-        S={v:2,profile:{name:obName,title:obTitle,regNumber:'',signature:'',emailVerified:false},places:pl,patients:[],appts:[],insurers:[],exceptions:[],settings:{msg:DEFAULT_MSG}};
-        save();go('horarios');toast('Conta criada! Agora ajuste seus dias e horários');
+        S={v:2,profile:{name:obName,title,regNumber:'',signature:'',emailVerified:false},places:pl,patients:[],appts:[],insurers:[],exceptions:[],settings:{msg:DEFAULT_MSG,icon:obIcon}};
+        save();applyIcon();go('horarios');toast('Conta criada! Agora ajuste seus dias e horários');
       };
     }else{
       $('#liEmail').oninput=e=>obEmail=e.target.value;$('#liPassword').oninput=e=>obPassword=e.target.value;
@@ -775,7 +799,7 @@ function onboarding(){
         const email=$('#liEmail').value.trim(),password=$('#liPassword').value;
         if(!email||!password){toast('Preencha e-mail e senha');return}
         const btn=$('#liGo');btn.disabled=true;
-        try{await apiLogin(email,password);S=await pullAll();save();render();toast('Bem-vinda de volta!')}
+        try{S=await apiLogin(email,password);save();render();toast('Bem-vinda de volta!')}
         catch(e){btn.disabled=false;toast('E-mail ou senha incorretos')}
       };
     }

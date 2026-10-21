@@ -3,6 +3,9 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { getPool } from '../../lib/db';
 import { signToken } from '../../lib/auth';
+import { userToMe } from '../../lib/mappers';
+import { loadResources } from '../../lib/bootstrap';
+import { sendJson } from '../../lib/respond';
 
 const schema = z.object({
   email: z.string().email(),
@@ -20,7 +23,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const pool = getPool();
   const result = await pool.query(
-    'select id, email, password_hash from users where email = $1',
+    'select id, email, password_hash, name, title, reg_number, signature, email_verified_at from users where email = $1',
     [email.toLowerCase()]
   );
   const user = result.rows[0];
@@ -35,5 +38,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const token = signToken({ userId: user.id, email: user.email });
+
+  // ?full=1: devolve o perfil e todos os recursos junto com o token, numa
+  // chamada só — evita a sequência login → GET /auth/me?full=1 (dois
+  // round-trips, caro principalmente no vercel dev local).
+  if (req.query.full === '1') {
+    return sendJson(req, res, 200, { token, me: userToMe(user), ...(await loadResources(user.id)) });
+  }
   res.status(200).json({ token });
 }
