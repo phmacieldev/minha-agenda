@@ -1024,7 +1024,7 @@ function editAppt(id,pre={}){
     <label class="field"><span id="priceLbl">Valor (R$)</span><input class="input num" id="fPrice" type="number" inputmode="decimal" min="0" step="0.01"></label></div>
     ${id?'':`<div class="two">
       <label class="field"><span>Repetir</span><select class="input" id="fFreq"><option value="">Não repetir</option><option value="7">Toda semana</option><option value="14">A cada 15 dias</option></select></label>
-      <label class="field" id="fCountWrap" hidden><span>Até quando</span><select class="input" id="fCount"><option value="4">4 vezes</option><option value="8" selected>8 vezes</option><option value="12">12 vezes</option><option value="24">24 vezes</option><option value="forever">Permanente (cancelo quando quiser)</option></select></label>
+      <label class="field" id="fCountWrap" hidden><span>Até quando</span><select class="input" id="fCount"><option value="1">Só desta vez (não repete depois)</option><option value="4">4 vezes</option><option value="8" selected>8 vezes</option><option value="12">12 vezes</option><option value="24">24 vezes</option><option value="forever">Permanente (cancelo quando quiser)</option></select></label>
     </div>
     <div class="field" id="fWdWrap" hidden><span>Em quais dias</span>
       <span class="small muted" style="font-weight:400">Marque mais de um dia se a pessoa tiver mais de uma sessão na semana.</span>
