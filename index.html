@@ -503,9 +503,9 @@ const RESOURCE_PATHS={places:'/places',insurers:'/insurers',patients:'/patients'
 const patientForApi=p=>{const r=Object.assign({},p);delete r.records;return r};
 
 async function pullAll(){
-  const[me,places,patientsRaw,insurers,appts,exceptions,records]=await Promise.all([
-    apiFetch('/auth/me'),apiFetch('/places'),apiFetch('/patients'),apiFetch('/insurers'),apiFetch('/appts'),apiFetch('/exceptions'),apiFetch('/records')
-  ]);
+  // Uma chamada só (perfil + todos os recursos) em vez de 7 — era o motivo da
+  // demora no login, principalmente local (ver api/auth/me.ts).
+  const{me,places,patients:patientsRaw,insurers,appts,exceptions,records}=await apiFetch('/auth/me?full=1');
   const byPatient={};
   records.forEach(r=>{const rec=Object.assign({},r);const pid=rec.patientId;delete rec.patientId;(byPatient[pid]=byPatient[pid]||[]).push(rec)});
   const patients=patientsRaw.map(p=>Object.assign({},p,{records:byPatient[p.id]||[]}));

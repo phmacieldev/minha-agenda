@@ -3,6 +3,19 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { getAuth, UnauthorizedError } from '../../lib/auth';
 import { getPool } from '../../lib/db';
+import { placeToJson, patientToJson, insurerToJson, apptToJson, exceptionToJson, recordToJson } from '../../lib/mappers';
+
+function rowToMe(row: any) {
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    title: row.title,
+    regNumber: row.reg_number,
+    signature: row.signature,
+    emailVerified: Boolean(row.email_verified_at),
+  };
+}
 
 const profileSchema = z.object({
   name: z.string().min(1).optional(),
@@ -35,15 +48,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         [auth.userId]
       );
       if (!result.rowCount) return res.status(404).json({ error: 'not_found' });
-      const row = result.rows[0];
+      const me = rowToMe(result.rows[0]);
+
+      // ?full=1: devolve perfil + todos os recursos numa chamada só, em vez de
+      // 7 (perfil, places, patients, insurers, appts, exceptions, records).
+      // O pullAll() do front usava Promise.all com 7 fetches; cada um é uma
+      // invocação de função separada, e isso soma bastante — principalmente
+      // no `vercel dev` local, que não paraleliza bem várias invocações ao
+      // mesmo tempo (login+sync chegava a 15-20s). Uma função só com 6
+      // queries no mesmo pool de conexão resolve isso.
+      if (req.query.full !== '1') return res.status(200).json(me);
+
+      const [places, patients, insurers, appts, exceptions, records] = await Promise.all([
+        pool.query('select * from places where user_id = $1 order by created_at asc', [auth.userId]),
+        pool.query('select * from patients where user_id = $1 order by name asc', [auth.userId]),
+        pool.query('select * from insurers where user_id = $1 order by name asc', [auth.userId]),
+        pool.query('select * from appts where user_id = $1 order by date asc, time asc', [auth.userId]),
+        pool.query('select * from exceptions where user_id = $1 order by date asc', [auth.userId]),
+        pool.query('select * from records where user_id = $1 order by date desc', [auth.userId]),
+      ]);
       return res.status(200).json({
-        id: row.id,
-        email: row.email,
-        name: row.name,
-        title: row.title,
-        regNumber: row.reg_number,
-        signature: row.signature,
-        emailVerified: Boolean(row.email_verified_at),
+        me,
+        places: places.rows.map(placeToJson),
+        patients: patients.rows.map(patientToJson),
+        insurers: insurers.rows.map(insurerToJson),
+        appts: appts.rows.map(apptToJson),
+        exceptions: exceptions.rows.map(exceptionToJson),
+        records: records.rows.map(recordToJson),
       });
     }
 
@@ -85,16 +116,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         `update users set ${fields.join(', ')} where id = $${i} returning id, email, name, title, reg_number, signature, email_verified_at`,
         values
       );
-      const row = result.rows[0];
-      return res.status(200).json({
-        id: row.id,
-        email: row.email,
-        name: row.name,
-        title: row.title,
-        regNumber: row.reg_number,
-        signature: row.signature,
-        emailVerified: Boolean(row.email_verified_at),
-      });
+      return res.status(200).json(rowToMe(result.rows[0]));
     }
 
     res.setHeader('Allow', 'GET, PUT, PATCH');
