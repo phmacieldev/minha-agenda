@@ -12,6 +12,7 @@ export function placeToJson(row: any) {
     hours: row.hours,
     info: row.info,
     msg: row.msg,
+    letterhead: row.letterhead,
   };
 }
 

@@ -18,6 +18,7 @@ const placeSchema = z.object({
   hours: hoursSchema.optional().default({}),
   info: z.string().optional().default(''),
   msg: z.string().nullable().optional(),
+  letterhead: z.string().max(400000).nullable().optional(), // modelo timbrado (data URL)
 });
 
 const placeUpdateSchema = placeSchema.omit({ id: true }).partial();
@@ -42,14 +43,15 @@ export default withAuth(async (req: VercelRequest, res: VercelResponse, auth) =>
       const p = parsed.data;
       const id = p.id ?? randomUUID();
       const result = await pool.query(
-        `insert into places (id, user_id, name, color, kind, address, price, duration, hours, info, msg)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        `insert into places (id, user_id, name, color, kind, address, price, duration, hours, info, msg, letterhead)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
          on conflict (id) do update set
            name = excluded.name, color = excluded.color, kind = excluded.kind, address = excluded.address,
-           price = excluded.price, duration = excluded.duration, hours = excluded.hours, info = excluded.info, msg = excluded.msg
+           price = excluded.price, duration = excluded.duration, hours = excluded.hours, info = excluded.info, msg = excluded.msg,
+           letterhead = excluded.letterhead
          where places.user_id = excluded.user_id
          returning *`,
-        [id, auth.userId, p.name, p.color, p.kind, p.address, p.price, p.duration, JSON.stringify(p.hours), p.info, p.msg ?? null]
+        [id, auth.userId, p.name, p.color, p.kind, p.address, p.price, p.duration, JSON.stringify(p.hours), p.info, p.msg ?? null, p.letterhead ?? null]
       );
       return res.status(201).json(placeToJson(result.rows[0]));
     }
