@@ -313,9 +313,6 @@ pre.share{white-space:pre-wrap;background:var(--surface);border:1px solid var(--
 #pTabs{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
 #pTabs button{padding:9px 4px;font-size:13px;text-align:center}
 .sheet.tall{height:92%}
-.bkbar{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;text-align:left;border:0;border-radius:14px;padding:12px 14px;margin-bottom:10px;background:var(--warn-soft);color:var(--warn)}
-.bkbar b{display:block;color:var(--ink)}
-.bkbar .go{font-weight:700;background:var(--warn);color:var(--surface);padding:8px 14px;border-radius:10px;flex:none}
 .ob .mark{width:76px;height:76px;background:none;border-radius:22%;overflow:hidden;box-shadow:0 10px 26px rgba(214,51,122,.35)}
 .ob .mark .logo{width:100%;height:100%;display:block}
 </style>
@@ -514,7 +511,7 @@ async function pullAll(){
   const patients=patientsRaw.map(p=>Object.assign({},p,{records:byPatient[p.id]||[]}));
   setSyncIds({places:places.map(x=>x.id),insurers:insurers.map(x=>x.id),patients:patients.map(x=>x.id),appts:appts.map(x=>x.id),exceptions:exceptions.map(x=>x.id),records:records.map(x=>x.id)});
   const settings=(S&&S.settings)||{msg:DEFAULT_MSG};
-  return{v:2,profile:{name:me.name,title:me.title||'',emailVerified:!!me.emailVerified},places,patients,appts,insurers,exceptions,settings};
+  return{v:2,profile:{name:me.name,title:me.title||'',regNumber:me.regNumber||'',signature:me.signature||'',emailVerified:!!me.emailVerified},places,patients,appts,insurers,exceptions,settings};
 }
 
 let syncing=false,syncAgain=false;
@@ -625,26 +622,34 @@ function copy(text){
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(()=>toast('Copiado'),()=>toast('Selecione o texto e copie'))}
   else toast('Selecione o texto e copie');
 }
+// Redimensiona/comprime uma imagem (assinatura/carimbo) no navegador antes de
+// guardar, pra não mandar fotos de câmera gigantes pro servidor.
+function compressImage(file,maxDim,quality){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>{
+      const img=new Image();
+      img.onload=()=>{
+        let w=img.width,h=img.height;
+        if(w>maxDim||h>maxDim){if(w>h){h=Math.round(h*maxDim/w);w=maxDim}else{w=Math.round(w*maxDim/h);h=maxDim}}
+        const c=document.createElement('canvas');c.width=w;c.height=h;
+        const ctx=c.getContext('2d');
+        ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);
+        ctx.drawImage(img,0,0,w,h);
+        resolve(c.toDataURL('image/jpeg',quality));
+      };
+      img.onerror=()=>reject(new Error('invalid_image'));
+      img.src=reader.result;
+    };
+    reader.onerror=()=>reject(new Error('read_failed'));
+    reader.readAsDataURL(file);
+  });
+}
 function saveFile(name,content,type,onSaved){
   const blob=new Blob([content],{type});
   try{const file=new File([blob],name,{type});
     if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:name}).then(()=>onSaved&&onSaved()).catch(()=>{});return}}catch(e){}
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);toast('Arquivo salvo');onSaved&&onSaved();
-}
-/* ---------- backup ---------- */
-const daysSince=ts=>ts?Math.floor((Date.now()-ts)/864e5):null;
-function backupDue(){if(!S||S.demo)return false;const d=daysSince(S.settings.lastBackup);if(d===null)return S.appts.length+S.patients.length>=3;return d>=7}
-function backupLabel(){const d=daysSince(S.settings.lastBackup);if(d===null)return 'Nenhuma cópia feita ainda';if(d===0)return 'Última cópia: hoje';if(d===1)return 'Última cópia: ontem';return `Última cópia: há ${d} dias`}
-function doBackup(){
-  const stamp=new Date();const name=`agenda-backup-${iso(stamp)}.json`;
-  saveFile(name,JSON.stringify({...S,backupAt:stamp.toISOString()},null,1),'application/json',()=>{S.settings.lastBackup=Date.now();save();render();toast('Cópia salva')});
-}
-function backupSheet(){
-  openSheet('Cópia de segurança',`
-    <div class="card" style="display:flex;flex-direction:column;gap:6px"><b>${backupLabel()}</b><span class="small muted">${S.appts.length} atendimentos · ${S.patients.length} pacientes · ${S.patients.reduce((n,p)=>n+(p.records||[]).length,0)} evoluções</span></div>
-    <button class="btn primary block" id="bkNow">Salvar cópia agora</button>
-    <div class="small muted">Na tela que abrir, toque em <b>Salvar em Arquivos</b> e escolha a pasta <b>iCloud Drive</b> (ou o Google Drive, se ele estiver instalado). Use sempre a mesma pasta, por exemplo "Backup Agenda". Cada cópia leva a data no nome, então as antigas ficam guardadas.</div>
-    <div class="info small">Para restaurar num celular novo: instale o app, vá em Ajustes › Restaurar cópia e escolha o arquivo mais recente.</div>`,b=>{b.querySelector('#bkNow').onclick=()=>{doBackup();closeSheet()}});
 }
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 function waLink(phone,text){let d=digits(phone);if(d.length===10||d.length===11)d='55'+d;return 'https://wa.me/'+d+'?text='+encodeURIComponent(text)}
@@ -726,7 +731,7 @@ function onboarding(){
         const btn=$('#obGo');btn.disabled=true;
         try{await apiSignup(email,password,obName,obTitle)}
         catch(e){btn.disabled=false;toast(e.body&&e.body.error==='email_in_use'?'Esse e-mail já tem conta':(e.body&&e.body.error==='invalid_input'?'Confira o e-mail e a senha (mínimo 6 caracteres)':'Não consegui criar a conta. Tente de novo.'));return}
-        S={v:2,profile:{name:obName,title:obTitle,emailVerified:false},places:pl,patients:[],appts:[],insurers:[],exceptions:[],settings:{msg:DEFAULT_MSG}};
+        S={v:2,profile:{name:obName,title:obTitle,regNumber:'',signature:'',emailVerified:false},places:pl,patients:[],appts:[],insurers:[],exceptions:[],settings:{msg:DEFAULT_MSG}};
         save();go('horarios');toast('Conta criada! Agora ajuste seus dias e horários');
       };
     }else{
@@ -800,7 +805,6 @@ function renderAgenda(){
   const sel=parse(ui.sel);
   const blocks=blocksOn(ui.sel);
   app.innerHTML=`
-  ${backupDue()?`<button class="bkbar" id="bkBar"><span><b>Hora de salvar uma cópia</b><span class="small">${backupLabel()}. Leva 5 segundos.</span></span><span class="go">Salvar</span></button>`:''}
   <div class="top"><div><h1>Olá, ${esc(S.profile.name.split(' ')[0])}</h1><div class="sub">${S.demo?'Você está vendo exemplos':(S.profile.title?esc(S.profile.title):'Sua agenda')}</div></div>
     <button class="chipbtn" id="shareFree">Horários livres</button></div>
   <div class="weeknav"><span class="m">${monthTxt}</span><div class="btns">
@@ -817,7 +821,6 @@ function renderAgenda(){
   $('#wNext').onclick=()=>{ui.week=iso(addDays(ws,7));ui.sel=ui.week;render()};
   $('#wToday').onclick=()=>{ui.week=iso(startOfWeek(new Date()));ui.sel=todayISO();render()};
   $('#shareFree').onclick=shareFree;
-  if($('#bkBar'))$('#bkBar').onclick=backupSheet;
   app.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>viewAppt(b.dataset.a));
   app.querySelectorAll('[data-free]').forEach(b=>b.onclick=()=>{const[t,p]=b.dataset.free.split('|');editAppt(null,{date:ui.sel,time:t,placeId:p})});
 }
@@ -1093,6 +1096,9 @@ function editRecord(patientId,recId,pre={}){
   });
 }
 
+function signBlock(extra){
+  return `<div class="sign">${S.profile.signature?`<img src="${S.profile.signature}" alt="Assinatura" style="max-width:220px;max-height:90px;display:block;margin:0 auto 6px">`:'<div class="line"></div>'}${esc(S.profile.name)}${S.profile.title?'<br>'+esc(S.profile.title):''}${S.profile.regNumber?'<br>'+esc(S.profile.regNumber):''}${extra?'<br>'+extra:''}</div>`;
+}
 function patientReport(p,{from,to,placeId,ev}){
   const inR=d=>(!from||d>=from)&&(!to||d<=to);
   const ap=S.appts.filter(a=>a.patientId===p.id&&inR(a.date)&&(!placeId||a.placeId===placeId)).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
@@ -1108,7 +1114,7 @@ function patientReport(p,{from,to,placeId,ev}){
   L.push('',`${S.profile.name}${S.profile.title?' – '+S.profile.title:''}`,`Emitido em ${brDate(todayISO())}`);
   const html=`<h1>Relatório de atendimento</h1><table class="kv">${info.map(([k,v])=>`<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}<tr><th>Período</th><td>${esc(per)}</td></tr><tr><th>Sessões realizadas</th><td>${done.length}${done.length?' – '+done.map(a=>fmtDate(a.date)).join(', '):''}</td></tr>${miss.length?`<tr><th>Faltas</th><td>${miss.length} – ${miss.map(a=>fmtDate(a.date)).join(', ')}</td></tr>`:''}</table>
     ${ev?`<h2>Evoluções</h2>${recs.length?recs.map(r=>`<div class="ev"><b>${brDate(r.date)}${r.placeId&&place(r.placeId)?' – '+esc(place(r.placeId).name):''}</b><p>${esc(r.text)}</p></div>`).join(''):'<p>Nenhuma evolução registrada no período.</p>'}`:''}
-    <div class="sign"><div class="line"></div>${esc(S.profile.name)}${S.profile.title?'<br>'+esc(S.profile.title):''}<br><small>Emitido em ${brDate(todayISO())}</small></div>`;
+    ${signBlock(`<small>Emitido em ${brDate(todayISO())}</small>`)}`;
   return{text:L.join('\n'),html};
 }
 
@@ -1125,7 +1131,7 @@ function clinicReport(placeId,R){
   const html=`<h1>Relatório de pacientes – ${esc(pl.name)}</h1><p class="meta">Período: ${brDate(R.pr.start)} a ${brDate(R.pr.end)} · Profissional: ${esc(S.profile.name)}${S.profile.title?' – '+esc(S.profile.title):''}</p>
     <table class="grid"><thead><tr><th>Paciente</th><th>Pagamento</th><th>Sessões</th><th>Datas</th><th>Faltas</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.p.name)}${ageOf(r.p.birth)!==null?`<br><small>${ageOf(r.p.birth)} anos</small>`:''}</td><td>${esc(r.pay)}${r.p.card?`<br><small>${esc(r.p.card)}</small>`:''}</td><td>${r.done.length}</td><td>${r.done.map(x=>fmtDate(x.date)).join(', ')}</td><td>${r.miss.length||''}</td></tr>`).join('')}</tbody></table>
     ${rows.some(r=>r.last||r.p.diag)?`<h2>Resumo clínico</h2>${rows.filter(r=>r.last||r.p.diag).map(r=>`<div class="ev"><b>${esc(r.p.name)}</b>${r.p.diag?`<p><i>Motivo:</i> ${esc(r.p.diag)}</p>`:''}${r.last?`<p><i>Última evolução (${fmtDate(r.last.date)}):</i> ${esc(r.last.text)}</p>`:''}</div>`).join('')}`:''}
-    <div class="sign"><div class="line"></div>${esc(S.profile.name)}${S.profile.title?'<br>'+esc(S.profile.title):''}</div>`;
+    ${signBlock()}`;
   return{text:L.join('\n'),html,count:rows.length};
 }
 
@@ -1361,7 +1367,7 @@ function reportCsv(R){
 }
 
 /* ---------- ajustes ---------- */
-const SETTINGS_TABS=[['perfil','Perfil'],['atendimento','Atendimento'],['aparencia','Aparência'],['seguranca','Segurança'],['dados','Dados']];
+const SETTINGS_TABS=[['perfil','Perfil'],['atendimento','Atendimento'],['aparencia','Aparência']];
 function renderSettings(){
   if(!SETTINGS_TABS.some(t=>t[0]===ui.setTab))ui.setTab='perfil';
   app.innerHTML=`<div class="top"><div><h1>Ajustes</h1><div class="sub">Perfil, atendimento e preferências</div></div></div>
@@ -1374,24 +1380,51 @@ function renderSettings(){
   const body=$('#setBody');
   if(ui.setTab==='perfil')renderSetPerfil(body);
   else if(ui.setTab==='atendimento')renderSetAtendimento(body);
-  else if(ui.setTab==='aparencia')renderSetAparencia(body);
-  else if(ui.setTab==='seguranca')renderSetSeguranca(body);
-  else renderSetDados(body);
+  else renderSetAparencia(body);
 }
 
 function renderSetPerfil(body){
   body.innerHTML=`<div class="section"><div class="label">Seu perfil</div><div class="card" style="display:flex;flex-direction:column;gap:12px">
-    <label class="field"><span>Nome</span><input class="input" id="sName" value="${esc(S.profile.name)}"></label>
+    <label class="field"><span>Nome completo</span><input class="input" id="sName" value="${esc(S.profile.name)}"></label>
     <label class="field"><span>Profissão</span><input class="input" id="sTitle" value="${esc(S.profile.title||'')}" placeholder="Ex.: Fonoaudióloga"></label>
+    <label class="field"><span>Número de registro profissional</span><input class="input" id="sReg" value="${esc(S.profile.regNumber||'')}" placeholder="Ex.: CRFa 12345"></label>
     ${AUTH?`<label class="field"><span>E-mail</span><div class="input" style="display:flex;align-items:center;color:var(--muted)">${esc(AUTH.email)}</div></label>`:''}
+  </div></div>
+  <div class="section" style="margin-bottom:10px"><div class="label">Assinatura e carimbo</div><div class="card" style="display:flex;flex-direction:column;gap:12px">
+    <div class="small muted">Aparece no rodapé dos relatórios gerados, no lugar da linha para assinar à mão. Envie uma foto ou print com fundo claro.</div>
+    <div id="sigPreview">${S.profile.signature?`<img src="${S.profile.signature}" alt="Assinatura" style="max-width:220px;max-height:90px;border-radius:10px;border:1px solid var(--line);background:#fff;padding:6px;display:block">`:'<div class="small muted">Nenhuma imagem enviada ainda.</div>'}</div>
+    <div class="btnrow"><label class="btn soft" for="sigFile" style="cursor:pointer">Enviar imagem</label>${S.profile.signature?'<button class="btn ghost" id="sigRemove">Remover</button>':''}</div>
+    <input type="file" id="sigFile" accept="image/*" hidden>
   </div></div>
   ${AUTH?`<div class="section" style="margin-bottom:10px"><div class="card" style="display:flex;flex-direction:column;gap:10px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><b>E-mail de confirmação</b><span class="pill" id="evBadge" style="background:var(--line);color:var(--muted)">verificando…</span></div>
     <div class="small muted" id="evHint">Confira se o e-mail da sua conta já foi confirmado.</div>
     <button class="btn ghost block" id="evResend" hidden>Reenviar e-mail de confirmação</button>
-  </div></div>`:''}`;
+  </div></div>
+  <div class="section"><div class="label">Sincronização na nuvem</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <div class="small muted">Conectado como <b>${esc(AUTH.email)}</b>. Suas alterações sincronizam automaticamente entre aparelhos.</div>
+    <button class="btn ghost block" id="syncNow">Sincronizar agora</button>
+  </div></div>
+  <div class="section"><div class="label">Trocar senha</div><div class="card" data-enter="#pwSave" style="display:flex;flex-direction:column;gap:12px">
+    ${pwField('pwCurrent','Senha atual',{autocomplete:'current-password'})}
+    ${pwField('pwNew','Nova senha',{placeholder:'Pelo menos 6 caracteres',autocomplete:'new-password'})}
+    <button class="btn primary block" id="pwSave">Salvar nova senha</button>
+  </div></div>
+  <div class="section" style="margin-bottom:10px"><button class="btn danger block" id="logout">Sair da conta</button></div>`
+  :`<div class="section" style="margin-bottom:10px"><div class="empty"><b>Sem conta na nuvem</b>Você está usando o app sem sincronização. Crie uma conta para trocar de aparelho sem perder dados.</div></div>`}`;
   $('#sName').onchange=e=>{S.profile.name=e.target.value.trim()||S.profile.name;save();toast('Nome salvo');if(AUTH)apiFetch('/auth/me',{method:'PUT',body:JSON.stringify({name:S.profile.name})}).catch(()=>{})};
   $('#sTitle').onchange=e=>{S.profile.title=e.target.value.trim();save();toast('Profissão salva');if(AUTH)apiFetch('/auth/me',{method:'PUT',body:JSON.stringify({title:S.profile.title})}).catch(()=>{})};
+  $('#sReg').onchange=e=>{S.profile.regNumber=e.target.value.trim();save();toast('Registro salvo');if(AUTH)apiFetch('/auth/me',{method:'PUT',body:JSON.stringify({regNumber:S.profile.regNumber})}).catch(()=>{})};
+  $('#sigFile').onchange=async e=>{
+    const f=e.target.files[0];if(!f)return;
+    try{
+      const dataUrl=await compressImage(f,480,0.82);
+      S.profile.signature=dataUrl;save();
+      if(AUTH)apiFetch('/auth/me',{method:'PUT',body:JSON.stringify({signature:dataUrl})}).catch(()=>{});
+      render();toast('Assinatura salva');
+    }catch(err){toast('Não consegui processar essa imagem')}
+  };
+  if($('#sigRemove'))$('#sigRemove').onclick=()=>{S.profile.signature='';save();if(AUTH)apiFetch('/auth/me',{method:'PUT',body:JSON.stringify({signature:''})}).catch(()=>{});render();toast('Assinatura removida')};
   if(AUTH){
     const badge=$('#evBadge'),hint=$('#evHint'),btn=$('#evResend');
     const paint=verified=>{
@@ -1405,6 +1438,22 @@ function renderSetPerfil(body){
     paint(!!S.profile.emailVerified);
     apiFetch('/auth/me').then(me=>{paint(!!me.emailVerified);save()}).catch(()=>{});
     btn.onclick=async()=>{btn.disabled=true;try{const r=await apiFetch('/auth/verify',{method:'POST'});toast(r.alreadyVerified?'Esse e-mail já estava confirmado':'E-mail de confirmação reenviado')}catch(e){toast('Não consegui reenviar agora')}btn.disabled=false};
+    $('#syncNow').onclick=async()=>{toast('Sincronizando…');try{await pushAll();toast('Sincronizado')}catch(e){toast('Não consegui sincronizar agora')}};
+    wireEye('pwCurrent');wireEye('pwNew');
+    $('#pwSave').onclick=async()=>{
+      const cur=$('#pwCurrent').value,nw=$('#pwNew').value;
+      if(!cur||!nw){toast('Preencha os dois campos');return}
+      if(nw.trim().length<6){toast('A nova senha precisa ter 6 caracteres ou mais');return}
+      const btn=$('#pwSave');btn.disabled=true;
+      try{await apiFetch('/auth/me?action=password',{method:'PUT',body:JSON.stringify({currentPassword:cur,newPassword:nw})});$('#pwCurrent').value='';$('#pwNew').value='';toast('Senha alterada')}
+      catch(e){toast(e.message==='wrong_password'?'Senha atual incorreta':'Não consegui trocar a senha agora')}
+      btn.disabled=false;
+    };
+    twoTap($('#logout'),'Sair da conta','Toque de novo para sair',()=>{
+      clearAuth();
+      try{localStorage.removeItem(KEY)}catch(e){}
+      location.reload();
+    });
   }
 }
 
@@ -1436,8 +1485,9 @@ function renderSetAparencia(body){
     <div class="card"><div class="seg" id="accentPick" style="margin:0">${ACCENTS.map(a=>`<button data-v="${a.key}" style="display:flex;align-items:center;gap:8px"><span class="swatch" style="background:${accentPreview(a.key)}"></span>${a.name}</button>`).join('')}</div></div>
   </div>
   <div class="section" style="margin-bottom:10px"><div class="label">Ícone do app</div>
-    <div class="small muted">Escolha o ícone de acordo com a profissão. Se o app já estiver na tela de início, remova e adicione de novo pra ver o ícone novo lá (o navegador não atualiza sozinho).</div>
+    <div class="small muted">Escolha o ícone de acordo com a profissão. Vale pra aba do navegador na hora.</div>
     <div class="card"><div class="iconpick" id="iconPick">${ICON_PROFESSIONS.map(p=>`<button data-v="${p.key}"><img src="${iconBase(p.key)?iconBase(p.key)+'icon-192.png':'icon-192.png?v=fono2'}" alt=""><span>${esc(p.name)}</span></button>`).join('')}</div></div>
+    <div class="info small">Se o app já estiver instalado (atalho na tela de início do celular ou na área de trabalho do computador), esse atalho <b>não muda sozinho</b> — é uma trava do próprio sistema (iOS/Android/Windows), o ícone fica "congelado" no que estava quando você instalou. Pra pegar o ícone novo aí: remova o atalho e instale de novo (no celular: Compartilhar → Adicionar à Tela de Início; no computador: no menu do navegador, Instalar app).</div>
   </div>`;
   segSelect($('#accentPick'),cur);
   $('#accentPick').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.settings.accent=b.dataset.v;save();applyAccent();render();toast('Cor atualizada')});
@@ -1445,51 +1495,6 @@ function renderSetAparencia(body){
     b.onclick=()=>{S.settings.icon=b.dataset.v;save();applyIcon();render();toast('Ícone atualizado')}});
 }
 
-function renderSetSeguranca(body){
-  if(!AUTH){
-    body.innerHTML=`<div class="section"><div class="empty"><b>Sem conta na nuvem</b>Você está usando o app sem sincronização. Crie uma conta para trocar de aparelho sem perder dados.</div></div>`;
-    return;
-  }
-  body.innerHTML=`<div class="section"><div class="label">Sincronização na nuvem</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
-    <div class="small muted">Conectado como <b>${esc(AUTH.email)}</b>. Suas alterações sincronizam automaticamente entre aparelhos.</div>
-    <button class="btn ghost block" id="syncNow">Sincronizar agora</button>
-  </div></div>
-  <div class="section"><div class="label">Trocar senha</div><div class="card" data-enter="#pwSave" style="display:flex;flex-direction:column;gap:12px">
-    ${pwField('pwCurrent','Senha atual',{autocomplete:'current-password'})}
-    ${pwField('pwNew','Nova senha',{placeholder:'Pelo menos 6 caracteres',autocomplete:'new-password'})}
-    <button class="btn primary block" id="pwSave">Salvar nova senha</button>
-  </div></div>
-  <div class="section" style="margin-bottom:10px"><button class="btn danger block" id="logout">Sair da conta</button></div>`;
-  wireEye('pwCurrent');wireEye('pwNew');
-  $('#syncNow').onclick=async()=>{toast('Sincronizando…');try{await pushAll();toast('Sincronizado')}catch(e){toast('Não consegui sincronizar agora')}};
-  $('#pwSave').onclick=async()=>{
-    const cur=$('#pwCurrent').value,nw=$('#pwNew').value;
-    if(!cur||!nw){toast('Preencha os dois campos');return}
-    if(nw.trim().length<6){toast('A nova senha precisa ter 6 caracteres ou mais');return}
-    const btn=$('#pwSave');btn.disabled=true;
-    try{await apiFetch('/auth/me?action=password',{method:'PUT',body:JSON.stringify({currentPassword:cur,newPassword:nw})});$('#pwCurrent').value='';$('#pwNew').value='';toast('Senha alterada')}
-    catch(e){toast(e.message==='wrong_password'?'Senha atual incorreta':'Não consegui trocar a senha agora')}
-    btn.disabled=false;
-  };
-  twoTap($('#logout'),'Sair da conta','Toque de novo para sair',()=>{
-    clearAuth();
-    try{localStorage.removeItem(KEY)}catch(e){}
-    location.reload();
-  });
-}
-
-function renderSetDados(body){
-  body.innerHTML=`<div class="section"><div class="label">Cópia de segurança</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
-    <b>${backupLabel()}</b>
-    <div class="small muted">Seus dados, inclusive prontuários, ficam guardados só neste aparelho${AUTH?' e sincronizados na nuvem':''}. O app avisa na agenda quando passar 7 dias sem cópia. Salve no iCloud Drive ou no Google Drive e guarde em local seguro, pois o arquivo contém dados de saúde dos pacientes.</div>
-    <div class="btnrow"><button class="btn primary" id="exp">Salvar cópia agora</button><label class="btn ghost" for="imp" style="cursor:pointer">Restaurar cópia</label></div>
-    <input type="file" id="imp" accept="application/json,.json" hidden></div></div>
-  <div class="section"><div class="card small muted">Para usar como app no iPhone: abra no Safari, toque em Compartilhar e depois em <b>Adicionar à Tela de Início</b>.</div></div>
-  <div class="section" style="margin-bottom:10px"><button class="btn danger block" id="wipe">Apagar todos os dados deste aparelho</button></div>`;
-  $('#exp').onclick=backupSheet;
-  $('#imp').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!d.places||!d.appts)throw 0;S=d;migrate();save();render();toast('Agenda restaurada')}catch(err){toast('Esse arquivo não é uma cópia da agenda')}};r.readAsText(f)};
-  twoTap($('#wipe'),'Apagar todos os dados deste aparelho','Tem certeza? Toque de novo para apagar tudo',()=>{S=null;try{localStorage.removeItem(KEY)}catch(e){}render()});
-}
 
 function editInsurer(id){
   const orig=id?insurer(id):null;
@@ -1555,7 +1560,6 @@ function editPlace(id){
 }
 
 render();
-if(location.hash==='#backup'&&S){history.replaceState(null,'',location.pathname+location.search);setTimeout(backupSheet,300)}
 if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
 })();
 </script>
