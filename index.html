@@ -316,8 +316,8 @@ pre.share{white-space:pre-wrap;background:var(--surface);border:1px solid var(--
 .obpick{background:var(--surface);border-radius:var(--r);padding:12px;box-shadow:var(--shadow)}
 .cdone{margin-top:2px}
 #pTabs{position:sticky;top:-4px;z-index:2;background:var(--bg);padding-block:6px}
-#pTabs{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
-#pTabs button{padding:9px 4px;font-size:13px;text-align:center}
+#pTabs{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+#pTabs button{padding:9px 2px;font-size:11.5px;text-align:center}
 .sheet.tall{height:92%}
 .ob .mark{width:76px;height:76px;background:none;border-radius:22%;overflow:hidden;box-shadow:0 10px 26px rgba(214,51,122,.35)}
 .ob .mark .logo{width:100%;height:100%;display:block}
@@ -1104,6 +1104,7 @@ function viewPatient(id,tab='perfil'){
   p.records=p.records||[];
   openSheet(p.name,'',b=>{
     sheet.classList.add('tall');
+    let docType='exame',examChecked=new Set(),docPlace='';
     const draw=()=>{
       const hist=S.appts.filter(a=>a.patientId===id).sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
       const done=hist.filter(a=>a.status==='concluido');const owed=done.filter(a=>!a.paid).reduce((s,a)=>s+(+a.price||0),0);
@@ -1139,11 +1140,26 @@ function viewPatient(id,tab='perfil'){
         <label class="toggle"><span>Incluir as evoluções do prontuário</span><input type="checkbox" id="rEv" checked></label>
         <pre class="share" id="rOut"></pre>
         <div class="btnrow"><button class="btn primary" id="rCopyP">Copiar texto</button><button class="btn ghost" id="rPrint">Imprimir ou PDF</button></div>`}
+      if(tab==='docs'){
+        const prof=S.settings.icon||'fonoaudiologia';
+        const examList=EXAM_CATALOG[prof]||[];
+        body=`
+        <div class="seg solid" id="dType"><button data-v="exame">Solicitação de exame</button><button data-v="laudo">Laudo</button></div>
+        <label class="field"><span>Local (para o timbrado)</span><select class="input" id="dPlace"><option value="">Nenhum</option>${S.places.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>
+        ${docType==='exame'?`
+          ${examList.length?`<div class="field"><span>Exames comuns em ${esc((ICON_PROFESSIONS.find(x=>x.key===prof)||{}).title||'sua área')}</span>
+            <div style="display:flex;flex-direction:column;gap:8px">${examList.map((e,i)=>`<label class="toggle"><span>${esc(e)}</span><input type="checkbox" class="dExam" data-i="${i}"></label>`).join('')}</div></div>`:''}
+          <label class="field"><span>Outros exames / observações</span><textarea class="input" id="dExtra" placeholder="Texto livre, entra no fim do documento"></textarea></label>`:`
+          <label class="field"><span>Título do documento</span><input class="input" id="dTitle" value="Laudo"></label>
+          <label class="field"><span>Conteúdo</span><textarea class="input" id="dText" style="min-height:220px" placeholder="Texto do laudo"></textarea></label>`}
+        <pre class="share" id="dOut"></pre>
+        <div class="btnrow"><button class="btn primary" id="dCopy">Copiar texto</button><button class="btn ghost" id="dPrint">Imprimir ou PDF</button></div>`;
+      }
       b.innerHTML=`
         <div style="display:flex;align-items:center;gap:12px"><span class="avatar" style="width:48px;height:48px;font-size:17px">${esc(initials(p.name))}</span>
           <div style="min-width:0;flex:1"><div class="small muted">${esc(patientSubtitle(p))||'Perfil do paciente'}</div>${p.phone?`<div class="num small" style="font-weight:600">${esc(fmtPhone(p.phone))}</div>`:''}</div>
           ${p.phone?`<a class="btn wa" style="min-height:42px;padding:0 14px;text-decoration:none;font-size:14px" href="${waLink(p.phone,'Olá, '+p.name.split(' ')[0]+'!')}" target="_blank" rel="noopener">WhatsApp</a>`:''}</div>
-        <div class="seg solid" id="pTabs"><button data-v="perfil">Perfil</button><button data-v="prontuario">Prontuário</button><button data-v="atend">Sessões</button><button data-v="relatorio">Relatório</button></div>
+        <div class="seg solid" id="pTabs"><button data-v="perfil">Perfil</button><button data-v="prontuario">Prontuário</button><button data-v="atend">Sessões</button><button data-v="relatorio">Relatório</button><button data-v="docs">Documentos</button></div>
         ${body}`;
       segSelect(b.querySelector('#pTabs'),tab);
       b.querySelectorAll('#pTabs button').forEach(x=>x.onclick=()=>{tab=x.dataset.v;draw();b.scrollTop=0});
@@ -1174,6 +1190,32 @@ function viewPatient(id,tab='perfil'){
         ['#rFrom','#rTo','#rPlace','#rEv'].forEach(s=>$b(s).onchange=upd);upd();
         $b('#rCopyP').onclick=()=>copy($b('#rOut').textContent);
         $b('#rPrint').onclick=()=>{const r=patientReport(p,{from:$b('#rFrom').value,to:$b('#rTo').value,placeId:$b('#rPlace').value,ev:$b('#rEv').checked});printDoc('Relatório – '+p.name,r.html)};
+      }
+      if(tab==='docs'){
+        segSelect($b('#dType'),docType);
+        b.querySelectorAll('#dType button').forEach(x=>x.onclick=()=>{docType=x.dataset.v;draw()});
+        $b('#dPlace').value=docPlace;
+        const buildDoc=()=>{
+          if(docType==='exame'){
+            const prof=S.settings.icon||'fonoaudiologia';
+            const list=EXAM_CATALOG[prof]||[];
+            const items=list.filter((_,i)=>examChecked.has(i));
+            const extra=$b('#dExtra')?.value.trim()||'';
+            return examRequestDoc(p,{placeId:docPlace,items,extra});
+          }
+          return laudoDoc(p,{placeId:docPlace,title:$b('#dTitle')?.value,text:$b('#dText')?.value||''});
+        };
+        const upd=()=>{$b('#dOut').textContent=buildDoc().text};
+        $b('#dPlace').onchange=()=>{docPlace=$b('#dPlace').value;upd()};
+        if(docType==='exame'){
+          b.querySelectorAll('.dExam').forEach(x=>{x.checked=examChecked.has(+x.dataset.i);x.onchange=()=>{const i=+x.dataset.i;if(x.checked)examChecked.add(i);else examChecked.delete(i);upd()}});
+          $b('#dExtra').oninput=upd;
+        }else{
+          $b('#dTitle').oninput=upd;$b('#dText').oninput=upd;
+        }
+        upd();
+        $b('#dCopy').onclick=()=>copy($b('#dOut').textContent);
+        $b('#dPrint').onclick=()=>printDoc((docType==='exame'?'Solicitação de exames – ':'Laudo – ')+p.name,buildDoc().html);
       }
     };
     draw();
@@ -1232,6 +1274,44 @@ function patientReport(p,{from,to,placeId,ev}){
   L.push('',`${S.profile.name}${S.profile.title?' – '+S.profile.title:''}`,`Emitido em ${brDate(todayISO())}`);
   const body=`<h1>Relatório de atendimento</h1><table class="kv">${info.map(([k,v])=>`<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}<tr><th>Período</th><td>${esc(per)}</td></tr><tr><th>Sessões realizadas</th><td>${done.length}${done.length?' – '+done.map(a=>fmtDate(a.date)).join(', '):''}</td></tr>${miss.length?`<tr><th>Faltas</th><td>${miss.length} – ${miss.map(a=>fmtDate(a.date)).join(', ')}</td></tr>`:''}</table>
     ${ev?`<h2>Evoluções</h2>${recs.length?recs.map(r=>`<div class="ev"><b>${brDate(r.date)}${r.placeId&&place(r.placeId)?' – '+esc(place(r.placeId).name):''}</b><p>${esc(r.text)}</p></div>`).join(''):'<p>Nenhuma evolução registrada no período.</p>'}`:''}
+    ${signBlock(`<small>Emitido em ${brDate(todayISO())}</small>`)}`;
+  return{text:L.join('\n'),html:letterheadWrap(pl,body)};
+}
+
+// Rascunho inicial dos exames mais comuns pedidos por cada profissão — ajuste
+// livremente esta lista (ela não depende de nada além de ser lida abaixo).
+const EXAM_CATALOG={
+  fonoaudiologia:['Audiometria tonal e vocal','Imitanciometria (timpanometria)','Emissões otoacústicas','Potencial evocado auditivo de tronco encefálico (BERA)','Nasofibrolaringoscopia','Videofluoroscopia da deglutição'],
+  fisioterapia:['Radiografia (RX)','Ressonância magnética','Ultrassonografia musculoesquelética','Eletroneuromiografia','Densitometria óssea'],
+  psicologia:['Avaliação neuropsicológica','Eletroencefalograma (EEG)','Avaliação oftalmológica e audiológica (exclusão de causas sensoriais)'],
+  psiquiatria:['Hemograma completo','TSH e T4 livre','Glicemia de jejum','Perfil lipídico','Função hepática e renal','Eletrocardiograma','Eletroencefalograma (EEG)','Dosagem de vitamina B12 e ácido fólico'],
+  nutricao:['Hemograma completo','Glicemia de jejum e hemoglobina glicada','Perfil lipídico','TSH e T4 livre','Vitamina D','Ferritina e ferro sérico','Bioimpedância / avaliação de composição corporal'],
+  psicopedagogia:['Avaliação neuropsicológica','Avaliação fonoaudiológica','Avaliação oftalmológica e audiológica (exclusão de causas sensoriais)'],
+  pediatria:['Hemograma completo','Triagem auditiva (teste da orelhinha)','Triagem visual (teste do olhinho)','Exame parasitológico de fezes','Dosagem de ferritina'],
+  'terapia-ocupacional':['Avaliação neuropsicológica','Avaliação fonoaudiológica','Avaliação de integração sensorial'],
+};
+function examRequestDoc(p,{placeId,items,extra}){
+  const pl=placeId?place(placeId):null;const age=ageOf(p.birth);
+  const L=['SOLICITAÇÃO DE EXAMES','',`Paciente: ${p.name}${age!==null?` (${age} anos)`:''}`];
+  if(p.birth)L.push(`Data de nascimento: ${brDate(p.birth)}`);
+  L.push('');items.forEach(i=>L.push('- '+i));
+  if(extra){if(items.length)L.push('');L.push(extra)}
+  L.push('','',`${S.profile.name}${S.profile.title?' – '+S.profile.title:''}`,`Emitido em ${brDate(todayISO())}`);
+  const body=`<h1>Solicitação de exames</h1>
+    <p class="meta">Paciente: ${esc(p.name)}${age!==null?` (${age} anos)`:''}${p.birth?' · Nascimento: '+esc(brDate(p.birth)):''}</p>
+    ${items.length?`<ul>${items.map(i=>`<li>${esc(i)}</li>`).join('')}</ul>`:''}
+    ${extra?`<p style="white-space:pre-wrap">${esc(extra)}</p>`:''}
+    ${signBlock(`<small>Emitido em ${brDate(todayISO())}</small>`)}`;
+  return{text:L.join('\n'),html:letterheadWrap(pl,body)};
+}
+function laudoDoc(p,{placeId,title,text}){
+  const pl=placeId?place(placeId):null;const age=ageOf(p.birth);const t=(title||'LAUDO').trim()||'LAUDO';
+  const L=[t.toUpperCase(),'',`Paciente: ${p.name}${age!==null?` (${age} anos)`:''}`];
+  if(p.birth)L.push(`Data de nascimento: ${brDate(p.birth)}`);
+  L.push('',text,'','',`${S.profile.name}${S.profile.title?' – '+S.profile.title:''}`,`Emitido em ${brDate(todayISO())}`);
+  const body=`<h1>${esc(t)}</h1>
+    <p class="meta">Paciente: ${esc(p.name)}${age!==null?` (${age} anos)`:''}${p.birth?' · Nascimento: '+esc(brDate(p.birth)):''}</p>
+    <p style="white-space:pre-wrap">${esc(text)}</p>
     ${signBlock(`<small>Emitido em ${brDate(todayISO())}</small>`)}`;
   return{text:L.join('\n'),html:letterheadWrap(pl,body)};
 }
