@@ -663,7 +663,7 @@ const placeMsgSuggestion=pl=>pl.kind==='particular'?'Olá, {paciente}! Confirman
 const OB_STEPS=['Sobre você','Onde você atende','Criar acesso'];
 function onboarding(){
   $('#tabs').hidden=true;$('#fab').hidden=true;
-  let places=[{name:'Clínica 1',color:'p1'},{name:'Clínica 2',color:'p4'},{name:'Particular',color:'p5'}];
+  let places=[{name:'Local 1',color:'p1'},{name:'Local 2',color:'p4'},{name:'Particular',color:'p5'}];
   let openCol=-1,obName='',obTitle='',obEmail='',obPassword='',mode='signup',step=1;
   const draw=()=>{
     const enterTarget=mode!=='signup'?'#liGo':step<3?'#obNext':'#obGo';
