@@ -1,6 +1,41 @@
 # Minha Agenda
 
-PWA de agenda de atendimentos para profissionais de saúde (fonoaudiologia, fisioterapia etc.) que atendem em clínicas e/ou particular. HTML + CSS + JS puro, sem build, sem dependências — tudo em `index.html`.
+PWA de agenda de atendimentos para profissionais de saúde (fonoaudiologia, fisioterapia, psicologia etc.) que atendem em clínicas e/ou particular. Front é HTML + CSS + JS puro, sem build — tudo em `index.html`. Tem uma API própria em TypeScript (Vercel Serverless Functions) com Postgres, pra sincronizar entre aparelhos sem depender só do navegador.
+
+## Arquitetura
+
+```mermaid
+flowchart LR
+  subgraph Aparelho["Aparelho da usuária"]
+    App["index.html\n(PWA, local-first)"]
+    LS[("localStorage")]
+    App <--> LS
+  end
+
+  subgraph Vercel["Vercel"]
+    API["Serverless Functions\n(TypeScript)"]
+    Cron["Vercel Cron\n(1x/dia)"]
+  end
+
+  DB[("Postgres\nSupabase (prod) / Docker (local)")]
+  Resend["Resend\n(e-mail transacional)"]
+
+  App -- "fetch /api/* (JWT Bearer)" --> API
+  API -- "SQL (user_id isola cada usuária)" --> DB
+  Cron -- "GET /api/cron/backup" --> API
+  API -- "best-effort, nunca bloqueia" --> Resend
+```
+
+O app é **local-first**: toda leitura e escrita acontece primeiro no `localStorage` (a tela nunca espera a rede), e a sincronização com a API roda em segundo plano, com debounce, só quando há sessão (`AUTH` setado). Sem conta, o app funciona 100% offline — é assim que o modo "Ver com exemplos" funciona, e é o motivo de dar pra usar no consultório mesmo com internet ruim.
+
+**Decisões que valem explicar:**
+
+- **IDs gerados no cliente + upsert no servidor.** Cada registro novo já nasce com um UUID (`crypto.randomUUID()`), tanto local quanto depois de sincronizado. O backend faz `insert ... on conflict (id) do update`, então reenviar o mesmo registro (reconectar depois de ficar offline, por exemplo) nunca duplica nada — a sincronização é idempotente.
+- **Autenticação sem sessão.** Login devolve um JWT (atualmente válido por 180 dias) que o front guarda e manda em cada chamada; não existe tabela de sessões nem cookie. Mais simples de operar, ao custo de não dar pra "derrubar" uma sessão específica — só trocar a senha invalida o token antigo (indiretamente, porque o hash muda, mas o JWT em si continua válido até expirar; é uma limitação conhecida, documentada aqui pra não ser redescoberta depois).
+- **`?id=` em vez de rota dinâmica.** O plano Hobby da Vercel limita a 12 Serverless Functions por deployment. Um `index.ts` por recurso (places, patients, appts...) resolve lista/criação/leitura/atualização/exclusão lendo o id da query string, em vez de dois arquivos por recurso — mantém a API num desenho RESTful sem estourar o limite. Hoje o projeto está exatamente em 12/12; qualquer endpoint novo precisa reaproveitar um arquivo existente (como foi feito com a troca de senha, pendurada em `PUT /api/auth/me?action=password`) ou remover algo.
+- **Backup automático na própria tabela.** Em vez de um serviço de storage externo (mais uma credencial pra gerenciar), o cron diário salva um dump JSON na tabela `backups` do próprio Postgres e apaga além das últimas 14 cópias. Simples de operar, e o volume de dados de um app deste tamanho não justifica mais que isso.
+- **Personalização sem build.** Cor de destaque e ícone do app (Ajustes › Aparência) são resolvidos só com CSS custom properties (`--accent`, recalculado via `color-mix()`) e troca de elementos `<link>` em tempo real — incluindo o `manifest.json`, que é reconstruído na hora como um `Blob` com a URL certa dos ícones, já que é um arquivo estático e não dá pra personalizar por usuária no servidor sem complicar a infraestrutura.
+- **Separação local × produção** é tratada como regra de segurança, não só de conveniência — ver a seção dedicada mais abaixo.
 
 ## Rodando localmente
 
@@ -39,11 +74,11 @@ npm test
 - `supabase/schema.sql` — schema do Postgres (usado tanto pelo Docker local quanto pelo Supabase de produção)
 - `docker-compose.yml` — Postgres local para desenvolvimento (`npm run db:up`)
 
-## Dados (hoje)
+## Dados
 
-Tudo fica salvo no `localStorage` do navegador, na chave `minha-agenda-v1` — nada é enviado para servidor nenhum. Cada profissional faz seu próprio cadastro (nome, locais, convênios) no onboarding. A sincronização na nuvem (ver `PLANO.md`) está sendo construída em paralelo, sem tirar o app do ar: o front ainda não fala com a API.
+Tudo fica salvo no `localStorage` do navegador, na chave `minha-agenda-v1` — é a cópia que o app realmente usa pra renderizar a tela (local-first, ver arquitetura acima). Cada profissional faz seu próprio cadastro (nome, locais, convênios) no onboarding, com conta na nuvem (sincroniza entre aparelhos) ou só local, no modo de exemplo.
 
-## Backend (em construção)
+## Backend
 
 API em TypeScript rodando como Vercel Serverless Functions, usando o Supabase só como Postgres gerenciado (sem Supabase Auth/RLS — autenticação e isolamento por usuária são feitos pela própria API).
 
