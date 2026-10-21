@@ -434,14 +434,26 @@ const ICON_PROFESSIONS=[
 ];
 const iconBase=key=>(!key||key==='fonoaudiologia')?'':'icons/'+key+'/';
 let lastManifestUrl=null;
+// Chrome/Edge cacheiam o favicon de forma agressiva e não repintam a aba só
+// porque o href do <link> mudou — é preciso trocar o elemento inteiro.
+function replaceLink(id,attrs){
+  const old=document.getElementById(id);
+  const el=document.createElement('link');
+  el.id=id;
+  Object.entries(attrs).forEach(([k,v])=>el.setAttribute(k,v));
+  if(old)old.replaceWith(el);else document.head.appendChild(el);
+  return el;
+}
 function applyIcon(){
   const key=(S&&S.settings&&S.settings.icon)||'fonoaudiologia';
   const base=iconBase(key);
-  const apple=$('#appleIcon'),fav=$('#favIcon'),manifestLink=$('#manifestLink');
-  if(apple)apple.href=base?base+'icon-180.png':'icon-180.png?v=fono2';
-  if(fav)fav.href=base?base+'icon-192.png':'icon-192.png?v=fono2';
+  const appleHref=base?base+'icon-180.png':'icon-180.png?v=fono2';
+  const favHref=base?base+'icon-192.png':'icon-192.png?v=fono2';
+  replaceLink('appleIcon',{rel:'apple-touch-icon',sizes:'180x180',href:appleHref});
+  replaceLink('favIcon',{rel:'icon',type:'image/png',sizes:'192x192',href:favHref});
+  const manifestLink=$('#manifestLink');
   const manifest={name:'Minha Agenda',short_name:'Agenda',start_url:'./',display:'standalone',background_color:'#F6F5FA',theme_color:'#D6337A',lang:'pt-BR',
-    icons:[{src:base?base+'icon-192.png':'icon-192.png?v=fono2',sizes:'192x192',type:'image/png'},{src:base?base+'icon-512.png':'icon-512.png?v=fono2',sizes:'512x512',type:'image/png',purpose:'any'}]};
+    icons:[{src:favHref,sizes:'192x192',type:'image/png'},{src:base?base+'icon-512.png':'icon-512.png?v=fono2',sizes:'512x512',type:'image/png',purpose:'any'}]};
   const url=URL.createObjectURL(new Blob([JSON.stringify(manifest)],{type:'application/manifest+json'}));
   if(manifestLink)manifestLink.href=url;
   if(lastManifestUrl)URL.revokeObjectURL(lastManifestUrl);
