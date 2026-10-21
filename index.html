@@ -236,9 +236,15 @@ pre.share{white-space:pre-wrap;background:var(--surface);border:1px solid var(--
 #printArea .sign{margin-top:48px;text-align:center}
 #printArea .sign .line{width:260px;border-top:1px solid #1e1b2e;margin:0 auto 6px}
 @media print{
+  @page{margin:14mm 12mm}
   body>*:not(#printArea){display:none!important}
   #printArea{position:static;overflow:visible}
   #printArea .pdBar{display:none}
+  /* Evita quebrar uma evolução, a tabela ou a assinatura no meio entre duas
+     páginas, e repete o cabeçalho da tabela de pacientes em listas longas. */
+  #printArea .ev,#printArea .sign,#printArea .kv tr,#printArea .grid tr{page-break-inside:avoid;break-inside:avoid}
+  #printArea h1,#printArea h2{page-break-after:avoid;break-after:avoid}
+  #printArea .grid thead{display:table-header-group}
 }
 .toast.show{opacity:1;transform:translate(-50%,0)}
 
