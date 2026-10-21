@@ -17,18 +17,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  const pool = getPool();
-  const data: Record<string, unknown[]> = {};
-  for (const table of TABLES) {
-    const result = await pool.query(`select * from ${table}`);
-    data[table] = result.rows;
+  // Sem isso, um erro de conexão (banco fora do ar, rede instável) sobe como
+  // promise rejeitada sem handler — localmente isso já derrubou o processo
+  // inteiro do `vercel dev` (não só essa invocação). Em produção o runtime da
+  // Vercel é isolado por invocação, mas mesmo assim vale responder 500 e
+  // logar, em vez de deixar vazar uma rejeição não tratada.
+  try {
+    const pool = getPool();
+    const data: Record<string, unknown[]> = {};
+    for (const table of TABLES) {
+      const result = await pool.query(`select * from ${table}`);
+      data[table] = result.rows;
+    }
+
+    await pool.query('insert into backups (id, data) values ($1, $2)', [randomUUID(), JSON.stringify(data)]);
+    await pool.query(
+      `delete from backups where id not in (select id from backups order by created_at desc limit $1)`,
+      [KEEP]
+    );
+
+    res.status(200).json({ ok: true, counts: Object.fromEntries(TABLES.map((t) => [t, data[t].length])) });
+  } catch (err) {
+    console.error('[cron/backup] falhou', err);
+    res.status(500).json({ error: 'backup_failed' });
   }
-
-  await pool.query('insert into backups (id, data) values ($1, $2)', [randomUUID(), JSON.stringify(data)]);
-  await pool.query(
-    `delete from backups where id not in (select id from backups order by created_at desc limit $1)`,
-    [KEEP]
-  );
-
-  res.status(200).json({ ok: true, counts: Object.fromEntries(TABLES.map((t) => [t, data[t].length])) });
 }
