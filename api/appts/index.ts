@@ -19,6 +19,7 @@ const apptSchema = z.object({
   status: z.enum(['agendado', 'confirmado', 'concluido', 'faltou', 'cancelado']).default('agendado'),
   paid: z.boolean().default(false),
   notes: z.string().optional().default(''),
+  seriesId: z.string().uuid().nullable().optional(),
 });
 
 const apptUpdateSchema = apptSchema.omit({ id: true }).partial();
@@ -28,6 +29,7 @@ const columnByKey: Record<string, string> = {
   placeId: 'place_id',
   insurerId: 'insurer_id',
   insName: 'ins_name',
+  seriesId: 'series_id',
 };
 
 function idFromQuery(req: VercelRequest): string | undefined {
@@ -71,15 +73,16 @@ export default withAuth(async (req: VercelRequest, res: VercelResponse, auth) =>
 
       const id = a.id ?? randomUUID();
       const result = await pool.query(
-        `insert into appts (id, user_id, patient_id, place_id, date, time, dur, price, pay, insurer_id, ins_name, status, paid, notes)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        `insert into appts (id, user_id, patient_id, place_id, date, time, dur, price, pay, insurer_id, ins_name, status, paid, notes, series_id)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
          on conflict (id) do update set
            patient_id = excluded.patient_id, place_id = excluded.place_id, date = excluded.date, time = excluded.time,
            dur = excluded.dur, price = excluded.price, pay = excluded.pay, insurer_id = excluded.insurer_id,
-           ins_name = excluded.ins_name, status = excluded.status, paid = excluded.paid, notes = excluded.notes
+           ins_name = excluded.ins_name, status = excluded.status, paid = excluded.paid, notes = excluded.notes,
+           series_id = excluded.series_id
          where appts.user_id = excluded.user_id
          returning *`,
-        [id, auth.userId, a.patientId, a.placeId, a.date, a.time, a.dur, a.price, a.pay, a.insurerId ?? null, a.insName ?? null, a.status, a.paid, a.notes]
+        [id, auth.userId, a.patientId, a.placeId, a.date, a.time, a.dur, a.price, a.pay, a.insurerId ?? null, a.insName ?? null, a.status, a.paid, a.notes, a.seriesId ?? null]
       );
       return res.status(201).json(apptToJson(result.rows[0]));
     }

@@ -81,6 +81,7 @@ h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.
 .day .dots{display:flex;gap:3px;height:6px}
 .day .dots i{width:5px;height:5px;border-radius:50%;display:block}
 .day.today .dn{color:var(--accent)}
+.day .dn.hol{text-decoration:underline wavy var(--bad);text-decoration-thickness:1.5px}
 .day.sel{background:var(--accent);color:var(--accent-ink)}
 .day.sel .dw,.day.sel .dn{color:var(--accent-ink)}
 .weeknav{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
@@ -316,8 +317,8 @@ pre.share{white-space:pre-wrap;background:var(--surface);border:1px solid var(--
 .obpick{background:var(--surface);border-radius:var(--r);padding:12px;box-shadow:var(--shadow)}
 .cdone{margin-top:2px}
 #pTabs{position:sticky;top:-4px;z-index:2;background:var(--bg);padding-block:6px}
-#pTabs{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
-#pTabs button{padding:9px 4px;font-size:13px;text-align:center}
+#pTabs{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+#pTabs button{padding:9px 2px;font-size:11.5px;text-align:center}
 .sheet.tall{height:92%}
 .ob .mark{width:76px;height:76px;background:none;border-radius:22%;overflow:hidden;box-shadow:0 10px 26px rgba(214,51,122,.35)}
 .ob .mark .logo{width:100%;height:100%;display:block}
@@ -353,6 +354,7 @@ const KEY='minha-agenda-v1';
 const COLORS=['p1','p2','p3','p4','p5','p6'];
 const WD=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const WDL=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+const WD_SHORT=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const MES=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
 const STATUS={agendado:'Agendado',confirmado:'Confirmado',concluido:'Atendido',faltou:'Faltou',cancelado:'Cancelado'};
 const DEFAULT_MSG='Olá, {paciente}! Passando para confirmar seu atendimento {dia} às {hora} em {local}. Posso confirmar?';
@@ -573,6 +575,7 @@ const payName=a=>a.pay==='convenio'?(insurer(a.insurerId)?.name||a.insName||'Con
 /* intervalos de atendimento do dia, já com folgas e horários extras */
 function dayIntervals(date,p){
   const wd=parse(date).getDay();
+  if(S.settings.blockHolidays!==false&&nationalHoliday(date))return [];
   const ex=S.exceptions.filter(e=>e.date===date&&(!e.placeId||e.placeId===p.id));
   if(ex.some(e=>e.type==='block'&&e.allDay))return [];
   const ivs=(p.hours[wd]||[]).map(x=>({...x}));
@@ -580,6 +583,29 @@ function dayIntervals(date,p){
   return ivs;
 }
 const blocksOn=date=>S.exceptions.filter(e=>e.date===date&&e.type==='block');
+
+// Feriados nacionais fixos + móveis (calculados a partir da Páscoa, algoritmo
+// de Gauss) — não depende de cadastro manual nem de ano fixo, funciona pra
+// qualquer data. Carnaval e Corpus Christi são ponto facultativo na maioria
+// das clínicas/consultórios, não feriado decretado, mas entram porque é
+// assim que a maior parte do público deste app trata esses dias.
+const FIXED_HOLIDAYS={'01-01':'Confraternização Universal','04-21':'Tiradentes','05-01':'Dia do Trabalho','09-07':'Independência do Brasil','10-12':'Nossa Senhora Aparecida','11-02':'Finados','11-15':'Proclamação da República','11-20':'Consciência Negra','12-25':'Natal'};
+function easterDate(year){
+  const a=year%19,b=Math.floor(year/100),c=year%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451);
+  const month=Math.floor((h+l-7*m+114)/31),day=((h+l-7*m+114)%31)+1;
+  return new Date(year,month-1,day);
+}
+function nationalHoliday(dateISO){
+  const d=parse(dateISO);
+  const fixed=FIXED_HOLIDAYS[pad(d.getMonth()+1)+'-'+pad(d.getDate())];
+  if(fixed)return fixed;
+  const diff=Math.round((d-easterDate(d.getFullYear()))/86400000);
+  if(diff===-48)return 'Carnaval (segunda)';
+  if(diff===-47)return 'Carnaval (terça)';
+  if(diff===-2)return 'Sexta-feira Santa';
+  if(diff===60)return 'Corpus Christi';
+  return null;
+}
 function freeSlots(date,placeId,ignoreId){
   const busy=activeAppts().filter(a=>a.date===date&&a.id!==ignoreId).map(a=>[toMin(a.time),toMin(a.time)+(+a.dur||50)]);
   const out=[];
@@ -707,6 +733,34 @@ function fillMsg(a){
 const placeMsgSuggestion=pl=>pl.kind==='particular'?'Olá, {paciente}! Confirmando seu atendimento particular {dia} às {hora}. Endereço: {endereco}. {info} Posso confirmar?':'Olá, {paciente}! Confirmando seu atendimento {dia} às {hora} na {local} ({endereco}). {info} Posso confirmar?';
 
 /* ---------- onboarding ---------- */
+function resetPasswordScreen(token){
+  $('#tabs').hidden=true;$('#fab').hidden=true;
+  let pw='',pw2='';
+  const draw=()=>{
+    app.innerHTML=`<div class="ob" data-enter="#rpGo">
+      <div class="hero"><h1>Nova senha</h1><p class="muted" style="margin:0">Escolha uma senha nova para entrar na sua conta.</p></div>
+      ${pwField('rpPw1','Nova senha',{placeholder:'Pelo menos 6 caracteres',autocomplete:'new-password'})}
+      ${pwField('rpPw2','Confirmar nova senha',{autocomplete:'new-password'})}
+      <button class="btn primary block" id="rpGo">Salvar nova senha</button>
+      <button class="btn ghost block" id="rpCancel">Cancelar</button>
+    </div>`;
+    $('#rpPw1').value=pw;$('#rpPw2').value=pw2;
+    $('#rpPw1').oninput=e=>pw=e.target.value;$('#rpPw2').oninput=e=>pw2=e.target.value;
+    wireEye('rpPw1');wireEye('rpPw2');
+    $('#rpCancel').onclick=()=>{history.replaceState(null,'',location.pathname);render()};
+    $('#rpGo').onclick=async()=>{
+      if(pw.length<6){toast('A senha precisa ter pelo menos 6 caracteres');return}
+      if(pw!==pw2){toast('As senhas não são iguais');return}
+      const btn=$('#rpGo');btn.disabled=true;
+      try{
+        await apiFetch('/auth/verify?action=reset',{method:'POST',body:JSON.stringify({token,newPassword:pw})});
+        history.replaceState(null,'',location.pathname);
+        toast('Senha alterada! Entre com a nova senha.');render();
+      }catch(e){btn.disabled=false;toast(e.body&&e.body.error==='invalid_token'?'Link expirado ou inválido. Peça um novo.':'Não consegui trocar a senha. Tente de novo.')}
+    };
+  };
+  draw();
+}
 const OB_STEPS=['Sobre você','Onde você atende','Criar acesso'];
 function onboarding(){
   $('#tabs').hidden=true;$('#fab').hidden=true;
@@ -745,6 +799,7 @@ function onboarding(){
         <label class="field"><span>E-mail</span><input class="input" id="liEmail" type="email" placeholder="voce@email.com" autocomplete="email"></label>
         ${pwField('liPassword','Senha',{autocomplete:'current-password'})}
         <button class="btn primary block" id="liGo">Entrar</button>
+        <button class="link" id="liForgot" type="button" style="align-self:center">Esqueci minha senha</button>
       `}
       <button class="btn ghost block" id="obDemo">Ver com exemplos primeiro</button>
     </div>`;
@@ -802,6 +857,15 @@ function onboarding(){
         try{S=await apiLogin(email,password);save();render();toast('Bem-vinda de volta!')}
         catch(e){btn.disabled=false;toast('E-mail ou senha incorretos')}
       };
+      $('#liForgot').onclick=async()=>{
+        const email=($('#liEmail').value||'').trim();
+        if(!email){toast('Digite seu e-mail no campo acima primeiro');$('#liEmail').focus();return}
+        const btn=$('#liForgot');btn.disabled=true;
+        try{await apiFetch('/auth/verify?action=forgot',{method:'POST',body:JSON.stringify({email})});
+          toast('Se esse e-mail tiver conta, mandamos um link pra trocar a senha')}
+        catch(e){toast('Não consegui enviar agora. Tente de novo em instantes')}
+        btn.disabled=false;
+      };
     }
     $('#obDemo').onclick=()=>{S=demo();save();go('agenda');toast('Exemplos carregados. Apague em Ajustes quando quiser.')};
   };
@@ -840,6 +904,8 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>go(b.dataset.tab));
 $('#fab').onclick=()=>{if(ui.tab==='horarios')editException(null);else editAppt(null,{date:ui.sel})};
 
 function render(){
+  const resetToken=new URLSearchParams(location.search).get('reset');
+  if(resetToken){resetPasswordScreen(resetToken);return}
   if(!S){$('#demoBar').hidden=true;document.body.classList.remove('has-demobar');onboarding();return}
   const demoBar=$('#demoBar');demoBar.hidden=!S.demo;document.body.classList.toggle('has-demobar',!!S.demo);
   demoBar.querySelector('#demoCreate').onclick=()=>{S=null;try{localStorage.removeItem(KEY)}catch(e){}render()};
@@ -861,6 +927,7 @@ function renderAgenda(){
   const act=list.filter(a=>a.status!=='cancelado');
   const sel=parse(ui.sel);
   const blocks=blocksOn(ui.sel);
+  const hol=nationalHoliday(ui.sel);
   app.innerHTML=`
   <div class="top"><div><h1>Olá, ${esc(S.profile.name.split(' ')[0])}</h1><div class="sub">${S.demo?'Você está vendo exemplos':(S.profile.title?esc(S.profile.title):'Sua agenda')}</div></div>
     <button class="chipbtn" id="shareFree">Horários livres</button></div>
@@ -868,9 +935,10 @@ function renderAgenda(){
     <button class="iconbtn" id="wPrev" aria-label="Semana anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg></button>
     <button class="chipbtn" id="wToday">Hoje</button>
     <button class="iconbtn" id="wNext" aria-label="Próxima semana"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg></button></div></div>
-  <div class="week">${days.map(d=>{const dd=parse(d);const ap=S.appts.filter(a=>a.date===d&&a.status!=='cancelado');const pls=[...new Set(ap.map(a=>place(a.placeId)?.color).filter(Boolean))].slice(0,3);
-    return `<button class="day ${d===ui.sel?'sel':''} ${d===todayISO()?'today':''}" data-d="${d}"><span class="dw">${WD[dd.getDay()]}</span><span class="dn">${dd.getDate()}</span><span class="dots">${pls.map(c=>`<i style="background:${d===ui.sel?'var(--accent-ink)':`${cv(c)}`}"></i>`).join('')}</span></button>`}).join('')}</div>
+  <div class="week">${days.map(d=>{const dd=parse(d);const ap=S.appts.filter(a=>a.date===d&&a.status!=='cancelado');const pls=[...new Set(ap.map(a=>place(a.placeId)?.color).filter(Boolean))].slice(0,3);const h=nationalHoliday(d);
+    return `<button class="day ${d===ui.sel?'sel':''} ${d===todayISO()?'today':''}" data-d="${d}"><span class="dw">${WD[dd.getDay()]}</span><span class="dn ${h?'hol':''}" title="${h?esc(h):''}">${dd.getDate()}</span><span class="dots">${pls.map(c=>`<i style="background:${d===ui.sel?'var(--accent-ink)':`${cv(c)}`}"></i>`).join('')}</span></button>`}).join('')}</div>
   <div class="dayhead"><h2>${ui.sel===todayISO()?'Hoje':cap(WDL[sel.getDay()])}, ${sel.getDate()} de ${MES[sel.getMonth()]}</h2><span class="muted small num">${act.length} ${act.length===1?'atendimento':'atendimentos'} · ${free.length} livres</span></div>
+  ${hol?`<div class="banner">Feriado: ${esc(hol)}${S.settings.blockHolidays===false?' · horários livres continuam aparecendo (desligado em Ajustes)':' · sem horários livres hoje'}</div>`:''}
   ${blocks.map(e=>`<div class="banner">${e.allDay?'Dia bloqueado':`Bloqueado ${e.s}–${e.e}`}${e.placeId?' em '+esc(place(e.placeId)?.name||''):''}${e.note?' · '+esc(e.note):''}</div>`).join('')}
   <div class="list">${items.length?items.map(it=>it.k==='a'?apptCard(it.a):freeCard(it.f)).join(''):`<div class="empty"><b>Nenhum horário neste dia</b>Não há atendimento previsto para ${WDL[sel.getDay()]}. Toque em Agendar para marcar mesmo assim, ou ajuste na aba Horários.</div>`}</div>`;
   app.querySelectorAll('.day').forEach(b=>b.onclick=()=>{ui.sel=b.dataset.d;render()});
@@ -942,6 +1010,7 @@ function viewAppt(id){
     <label class="toggle"><span>${a.pay==='convenio'?'Repasse recebido da clínica/convênio':'Pagamento recebido'}</span><input type="checkbox" id="paid" ${a.paid?'checked':''}></label>
     <div class="btnrow"><button class="btn soft" id="evo">${(p?.records||[]).some(r=>r.apptId===a.id)?'Ver evolução':'Registrar evolução'}</button><button class="btn ghost" id="pProf">Perfil do paciente</button></div>
     <div class="btnrow"><button class="btn soft" id="edit">Editar ou remarcar</button><button class="btn ghost" id="again">Agendar retorno</button></div>
+    ${a.seriesId&&S.appts.some(x=>x.seriesId===a.seriesId&&x.date>=todayISO()&&x.status!=='cancelado')?`<button class="btn danger block" id="cancelSeries">Cancelar série</button>`:''}
     <button class="btn danger block" id="del">Excluir atendimento</button>`,b=>{
     b.querySelectorAll('#stSeg button').forEach(x=>x.onclick=()=>{a.status=x.dataset.s;save();render();viewAppt(id);toast('Marcado como '+STATUS[a.status].toLowerCase())});
     b.querySelector('#paid').onchange=e=>{a.paid=e.target.checked;save();render()};
@@ -950,6 +1019,12 @@ function viewAppt(id){
     b.querySelector('#evo').onclick=()=>{const r=(p?.records||[]).find(r=>r.apptId===a.id);editRecord(a.patientId,r?.id||null,{apptId:a.id,date:a.date,placeId:a.placeId})};
     b.querySelector('#pProf').onclick=()=>viewPatient(a.patientId);
     b.querySelector('#again').onclick=()=>editAppt(null,{patientId:a.patientId,placeId:a.placeId,date:iso(addDays(parse(a.date),7)),time:a.time,pay:a.pay,insurerId:a.insurerId});
+    const cs=b.querySelector('#cancelSeries');
+    if(cs)twoTap(cs,'Cancelar série','Toque de novo para cancelar os atendimentos futuros',()=>{
+      const today=todayISO();
+      S.appts.forEach(x=>{if(x.seriesId===a.seriesId&&x.date>=today&&x.status!=='cancelado')x.status='cancelado'});
+      save();closeSheet();render();toast('Série cancelada a partir de hoje');
+    });
     twoTap(b.querySelector('#del'),'Excluir atendimento','Toque de novo para excluir',()=>{S.appts=S.appts.filter(x=>x.id!==id);save();closeSheet();render();toast('Atendimento excluído')});
   });
 }
@@ -974,7 +1049,14 @@ function editAppt(id,pre={}){
         <span class="small muted" style="font-weight:400">O valor é o que você recebe por sessão. Dá para ter valores diferentes por clínica em Ajustes › Convênios.</span></div></div>
     <div class="two"><label class="field"><span>Duração (min)</span><input class="input num" id="fDur" type="number" inputmode="numeric" min="5" step="5"></label>
     <label class="field"><span id="priceLbl">Valor (R$)</span><input class="input num" id="fPrice" type="number" inputmode="decimal" min="0" step="0.01"></label></div>
-    ${id?'':`<label class="field"><span>Repetir toda semana</span><select class="input" id="fRep"><option value="1">Não repetir</option>${[2,3,4,6,8,10,12].map(n=>`<option value="${n}">${n} semanas seguidas</option>`).join('')}</select></label>`}
+    ${id?'':`<div class="two">
+      <label class="field"><span>Repetir</span><select class="input" id="fFreq"><option value="">Não repetir</option><option value="7">Toda semana</option><option value="14">A cada 15 dias</option></select></label>
+      <label class="field" id="fCountWrap" hidden><span>Até quando</span><select class="input" id="fCount"><option value="1">Só desta vez (não repete depois)</option><option value="4">4 vezes</option><option value="8" selected>8 vezes</option><option value="12">12 vezes</option><option value="24">24 vezes</option><option value="forever">Permanente (cancelo quando quiser)</option></select></label>
+    </div>
+    <div class="field" id="fWdWrap" hidden><span>Em quais dias</span>
+      <span class="small muted" style="font-weight:400">Marque mais de um dia se a pessoa tiver mais de uma sessão na semana.</span>
+      <div class="seg solid" id="fWd">${WD_SHORT.map((w,i)=>`<button type="button" data-v="${i}">${w}</button>`).join('')}</div>
+    </div>`}
     <label class="field"><span>Observações</span><textarea class="input" id="fNotes" placeholder="Opcional">${esc(a.notes||'')}</textarea></label>
     <div id="fWarn"></div>
     <button class="btn primary block" id="fSave">${id?'Salvar alterações':'Agendar'}</button>`,b=>{
@@ -992,14 +1074,27 @@ function editAppt(id,pre={}){
       $b('#slotLbl').textContent=`Horários livres em ${place(placeId).name}`;
       $b('#fSlots').innerHTML=fs.length?fs.map(f=>`<button type="button" class="slot ${f.time===t?'on':''}" data-t="${f.time}">${f.time}</button>`).join(''):`<span class="small muted">Nenhum horário livre neste dia. Você pode digitar um horário acima.</span>`;
       b.querySelectorAll('.slot').forEach(s=>s.onclick=()=>{$b('#fTime').value=s.dataset.t;slots()});warn()};
-    const warn=()=>{const d=$b('#fDate').value,t=$b('#fTime').value;const c=d&&t&&conflict(d,t,$b('#fDur').value,id);
-      $b('#fWarn').innerHTML=c?`<div class="notice">Atenção: esse horário bate com ${esc(patient(c.patientId)?.name||'outro atendimento')} às ${c.time} (${esc(place(c.placeId)?.name||'')}).</div>`:''};
+    const warn=()=>{const d=$b('#fDate').value,t=$b('#fTime').value;const c=d&&t&&conflict(d,t,$b('#fDur').value,id);const h=d&&nationalHoliday(d);
+      $b('#fWarn').innerHTML=(h?`<div class="notice">Atenção: ${esc(h)} é feriado.</div>`:'')+(c?`<div class="notice">Atenção: esse horário bate com ${esc(patient(c.patientId)?.name||'outro atendimento')} às ${c.time} (${esc(place(c.placeId)?.name||'')}).</div>`:'')};
     $b('#fDur').value=a.dur||'';$b('#fPrice').value=a.price??'';
     fillIns();
     b.querySelectorAll('#fPlace button').forEach(x=>x.onclick=()=>setPlace(x.dataset.v));
     b.querySelectorAll('#fPay button').forEach(x=>x.onclick=()=>setPay(x.dataset.v));
     $b('#fIns').onchange=()=>{insId=$b('#fIns').value;$b('#newIns').hidden=insId!=='__new';if(insId==='__new')$b('#niName').focus();autoPrice()};
     $b('#niPrice').oninput=autoPrice;
+    const wds=new Set();
+    const drawWd=()=>b.querySelectorAll('#fWd button').forEach(x=>x.classList.toggle('on',wds.has(+x.dataset.v)));
+    if($b('#fFreq'))$b('#fFreq').onchange=()=>{
+      const on=!!$b('#fFreq').value;
+      $b('#fCountWrap').hidden=!on;$b('#fWdWrap').hidden=!on;
+      if(on&&!wds.size){const d=$b('#fDate').value;if(d)wds.add(parse(d).getDay())}
+      drawWd();
+    };
+    if($b('#fWd'))b.querySelectorAll('#fWd button').forEach(x=>x.onclick=()=>{
+      const v=+x.dataset.v;
+      if(wds.has(v)){if(wds.size>1)wds.delete(v)}else wds.add(v);
+      drawWd();
+    });
     setPlace(placeId);setPay(pay);
     $b('#fDate').onchange=slots;$b('#fTime').oninput=slots;
     $b('#fDur').oninput=()=>{durTouched=true;warn()};$b('#fPrice').oninput=()=>priceTouched=true;
@@ -1023,7 +1118,31 @@ function editAppt(id,pre={}){
       p.pay=pay;p.insurerId=ins?.id||'';
       const base={patientId:p.id,placeId,time,dur:+$b('#fDur').value||place(placeId).duration||50,price:+$b('#fPrice').value||0,pay,insurerId:ins?.id||'',insName:ins?.name||'',notes:$b('#fNotes').value.trim()};
       if(id){Object.assign(S.appts.find(x=>x.id===id),base,{date})}
-      else{const rep=+($b('#fRep')?.value||1);for(let i=0;i<rep;i++)S.appts.push({id:uid(),...base,date:iso(addDays(parse(date),7*i)),status:'agendado',paid:false})}
+      else{
+        const freq=+($b('#fFreq')?.value||0);
+        if(!freq){S.appts.push({id:uid(),...base,date,status:'agendado',paid:false})}
+        else{
+          const countVal=$b('#fCount')?.value||'8';
+          const seriesId=uid();
+          // "Permanente" não é infinito de verdade (o array não comporta isso) —
+          // gera 2 anos de ocorrências pra frente, o que na prática não acaba
+          // antes de precisar reagendar. Cancelar série some com o resto.
+          const n=countVal==='forever'?Math.floor(730/freq)+1:+countVal;
+          const baseDate=parse(date),baseWd=baseDate.getDay();
+          const selWds=wds.size?[...wds]:[baseWd];
+          // freq é sempre múltiplo de 7, então somar freq*i preserva o dia da
+          // semana — dá pra gerar mais de um dia por ciclo (ex.: seg + qui)
+          // deslocando a partir desse âncora, cobrindo quem tem 2+ sessões/semana.
+          for(let i=0;i<n;i++){
+            const anchor=addDays(baseDate,freq*i);
+            for(const wd of selWds){
+              const occ=addDays(anchor,wd-baseWd);
+              if(i===0&&occ<baseDate)continue;
+              S.appts.push({id:uid(),...base,date:iso(occ),status:'agendado',paid:false,seriesId});
+            }
+          }
+        }
+      }
       save();ui.sel=date;ui.week=iso(startOfWeek(parse(date)));ui.tab='agenda';
       closeSheet();render();toast(id?'Alterações salvas':'Atendimento agendado');
     };
@@ -1052,6 +1171,7 @@ function viewPatient(id,tab='perfil'){
   p.records=p.records||[];
   openSheet(p.name,'',b=>{
     sheet.classList.add('tall');
+    let docType='exame',examChecked=new Set(),docPlace='';
     const draw=()=>{
       const hist=S.appts.filter(a=>a.patientId===id).sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
       const done=hist.filter(a=>a.status==='concluido');const owed=done.filter(a=>!a.paid).reduce((s,a)=>s+(+a.price||0),0);
@@ -1087,11 +1207,26 @@ function viewPatient(id,tab='perfil'){
         <label class="toggle"><span>Incluir as evoluções do prontuário</span><input type="checkbox" id="rEv" checked></label>
         <pre class="share" id="rOut"></pre>
         <div class="btnrow"><button class="btn primary" id="rCopyP">Copiar texto</button><button class="btn ghost" id="rPrint">Imprimir ou PDF</button></div>`}
+      if(tab==='docs'){
+        const prof=S.settings.icon||'fonoaudiologia';
+        const examList=EXAM_CATALOG[prof]||[];
+        body=`
+        <div class="seg solid" id="dType"><button data-v="exame">Solicitação de exame</button><button data-v="laudo">Laudo</button></div>
+        <label class="field"><span>Local (para o timbrado)</span><select class="input" id="dPlace"><option value="">Nenhum</option>${S.places.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>
+        ${docType==='exame'?`
+          ${examList.length?`<div class="field"><span>Exames comuns em ${esc((ICON_PROFESSIONS.find(x=>x.key===prof)||{}).title||'sua área')}</span>
+            <div style="display:flex;flex-direction:column;gap:8px">${examList.map((e,i)=>`<label class="toggle"><span>${esc(e)}</span><input type="checkbox" class="dExam" data-i="${i}"></label>`).join('')}</div></div>`:''}
+          <label class="field"><span>Outros exames / observações</span><textarea class="input" id="dExtra" placeholder="Texto livre, entra no fim do documento"></textarea></label>`:`
+          <label class="field"><span>Título do documento</span><input class="input" id="dTitle" value="Laudo"></label>
+          <label class="field"><span>Conteúdo</span><textarea class="input" id="dText" style="min-height:220px" placeholder="Texto do laudo"></textarea></label>`}
+        <pre class="share" id="dOut"></pre>
+        <div class="btnrow"><button class="btn primary" id="dCopy">Copiar texto</button><button class="btn ghost" id="dPrint">Imprimir ou PDF</button></div>`;
+      }
       b.innerHTML=`
         <div style="display:flex;align-items:center;gap:12px"><span class="avatar" style="width:48px;height:48px;font-size:17px">${esc(initials(p.name))}</span>
           <div style="min-width:0;flex:1"><div class="small muted">${esc(patientSubtitle(p))||'Perfil do paciente'}</div>${p.phone?`<div class="num small" style="font-weight:600">${esc(fmtPhone(p.phone))}</div>`:''}</div>
           ${p.phone?`<a class="btn wa" style="min-height:42px;padding:0 14px;text-decoration:none;font-size:14px" href="${waLink(p.phone,'Olá, '+p.name.split(' ')[0]+'!')}" target="_blank" rel="noopener">WhatsApp</a>`:''}</div>
-        <div class="seg solid" id="pTabs"><button data-v="perfil">Perfil</button><button data-v="prontuario">Prontuário</button><button data-v="atend">Sessões</button><button data-v="relatorio">Relatório</button></div>
+        <div class="seg solid" id="pTabs"><button data-v="perfil">Perfil</button><button data-v="prontuario">Prontuário</button><button data-v="atend">Sessões</button><button data-v="relatorio">Relatório</button><button data-v="docs">Documentos</button></div>
         ${body}`;
       segSelect(b.querySelector('#pTabs'),tab);
       b.querySelectorAll('#pTabs button').forEach(x=>x.onclick=()=>{tab=x.dataset.v;draw();b.scrollTop=0});
@@ -1122,6 +1257,32 @@ function viewPatient(id,tab='perfil'){
         ['#rFrom','#rTo','#rPlace','#rEv'].forEach(s=>$b(s).onchange=upd);upd();
         $b('#rCopyP').onclick=()=>copy($b('#rOut').textContent);
         $b('#rPrint').onclick=()=>{const r=patientReport(p,{from:$b('#rFrom').value,to:$b('#rTo').value,placeId:$b('#rPlace').value,ev:$b('#rEv').checked});printDoc('Relatório – '+p.name,r.html)};
+      }
+      if(tab==='docs'){
+        segSelect($b('#dType'),docType);
+        b.querySelectorAll('#dType button').forEach(x=>x.onclick=()=>{docType=x.dataset.v;draw()});
+        $b('#dPlace').value=docPlace;
+        const buildDoc=()=>{
+          if(docType==='exame'){
+            const prof=S.settings.icon||'fonoaudiologia';
+            const list=EXAM_CATALOG[prof]||[];
+            const items=list.filter((_,i)=>examChecked.has(i));
+            const extra=$b('#dExtra')?.value.trim()||'';
+            return examRequestDoc(p,{placeId:docPlace,items,extra});
+          }
+          return laudoDoc(p,{placeId:docPlace,title:$b('#dTitle')?.value,text:$b('#dText')?.value||''});
+        };
+        const upd=()=>{$b('#dOut').textContent=buildDoc().text};
+        $b('#dPlace').onchange=()=>{docPlace=$b('#dPlace').value;upd()};
+        if(docType==='exame'){
+          b.querySelectorAll('.dExam').forEach(x=>{x.checked=examChecked.has(+x.dataset.i);x.onchange=()=>{const i=+x.dataset.i;if(x.checked)examChecked.add(i);else examChecked.delete(i);upd()}});
+          $b('#dExtra').oninput=upd;
+        }else{
+          $b('#dTitle').oninput=upd;$b('#dText').oninput=upd;
+        }
+        upd();
+        $b('#dCopy').onclick=()=>copy($b('#dOut').textContent);
+        $b('#dPrint').onclick=()=>printDoc((docType==='exame'?'Solicitação de exames – ':'Laudo – ')+p.name,buildDoc().html);
       }
     };
     draw();
@@ -1180,6 +1341,44 @@ function patientReport(p,{from,to,placeId,ev}){
   L.push('',`${S.profile.name}${S.profile.title?' – '+S.profile.title:''}`,`Emitido em ${brDate(todayISO())}`);
   const body=`<h1>Relatório de atendimento</h1><table class="kv">${info.map(([k,v])=>`<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}<tr><th>Período</th><td>${esc(per)}</td></tr><tr><th>Sessões realizadas</th><td>${done.length}${done.length?' – '+done.map(a=>fmtDate(a.date)).join(', '):''}</td></tr>${miss.length?`<tr><th>Faltas</th><td>${miss.length} – ${miss.map(a=>fmtDate(a.date)).join(', ')}</td></tr>`:''}</table>
     ${ev?`<h2>Evoluções</h2>${recs.length?recs.map(r=>`<div class="ev"><b>${brDate(r.date)}${r.placeId&&place(r.placeId)?' – '+esc(place(r.placeId).name):''}</b><p>${esc(r.text)}</p></div>`).join(''):'<p>Nenhuma evolução registrada no período.</p>'}`:''}
+    ${signBlock(`<small>Emitido em ${brDate(todayISO())}</small>`)}`;
+  return{text:L.join('\n'),html:letterheadWrap(pl,body)};
+}
+
+// Rascunho inicial dos exames mais comuns pedidos por cada profissão — ajuste
+// livremente esta lista (ela não depende de nada além de ser lida abaixo).
+const EXAM_CATALOG={
+  fonoaudiologia:['Audiometria tonal e vocal','Imitanciometria (timpanometria)','Emissões otoacústicas','Potencial evocado auditivo de tronco encefálico (BERA)','Nasofibrolaringoscopia','Videofluoroscopia da deglutição'],
+  fisioterapia:['Radiografia (RX)','Ressonância magnética','Ultrassonografia musculoesquelética','Eletroneuromiografia','Densitometria óssea'],
+  psicologia:['Avaliação neuropsicológica','Eletroencefalograma (EEG)','Avaliação oftalmológica e audiológica (exclusão de causas sensoriais)'],
+  psiquiatria:['Hemograma completo','TSH e T4 livre','Glicemia de jejum','Perfil lipídico','Função hepática e renal','Eletrocardiograma','Eletroencefalograma (EEG)','Dosagem de vitamina B12 e ácido fólico'],
+  nutricao:['Hemograma completo','Glicemia de jejum e hemoglobina glicada','Perfil lipídico','TSH e T4 livre','Vitamina D','Ferritina e ferro sérico','Bioimpedância / avaliação de composição corporal'],
+  psicopedagogia:['Avaliação neuropsicológica','Avaliação fonoaudiológica','Avaliação oftalmológica e audiológica (exclusão de causas sensoriais)'],
+  pediatria:['Hemograma completo','Triagem auditiva (teste da orelhinha)','Triagem visual (teste do olhinho)','Exame parasitológico de fezes','Dosagem de ferritina'],
+  'terapia-ocupacional':['Avaliação neuropsicológica','Avaliação fonoaudiológica','Avaliação de integração sensorial'],
+};
+function examRequestDoc(p,{placeId,items,extra}){
+  const pl=placeId?place(placeId):null;const age=ageOf(p.birth);
+  const L=['SOLICITAÇÃO DE EXAMES','',`Paciente: ${p.name}${age!==null?` (${age} anos)`:''}`];
+  if(p.birth)L.push(`Data de nascimento: ${brDate(p.birth)}`);
+  L.push('');items.forEach(i=>L.push('- '+i));
+  if(extra){if(items.length)L.push('');L.push(extra)}
+  L.push('','',`${S.profile.name}${S.profile.title?' – '+S.profile.title:''}`,`Emitido em ${brDate(todayISO())}`);
+  const body=`<h1>Solicitação de exames</h1>
+    <p class="meta">Paciente: ${esc(p.name)}${age!==null?` (${age} anos)`:''}${p.birth?' · Nascimento: '+esc(brDate(p.birth)):''}</p>
+    ${items.length?`<ul>${items.map(i=>`<li>${esc(i)}</li>`).join('')}</ul>`:''}
+    ${extra?`<p style="white-space:pre-wrap">${esc(extra)}</p>`:''}
+    ${signBlock(`<small>Emitido em ${brDate(todayISO())}</small>`)}`;
+  return{text:L.join('\n'),html:letterheadWrap(pl,body)};
+}
+function laudoDoc(p,{placeId,title,text}){
+  const pl=placeId?place(placeId):null;const age=ageOf(p.birth);const t=(title||'LAUDO').trim()||'LAUDO';
+  const L=[t.toUpperCase(),'',`Paciente: ${p.name}${age!==null?` (${age} anos)`:''}`];
+  if(p.birth)L.push(`Data de nascimento: ${brDate(p.birth)}`);
+  L.push('',text,'','',`${S.profile.name}${S.profile.title?' – '+S.profile.title:''}`,`Emitido em ${brDate(todayISO())}`);
+  const body=`<h1>${esc(t)}</h1>
+    <p class="meta">Paciente: ${esc(p.name)}${age!==null?` (${age} anos)`:''}${p.birth?' · Nascimento: '+esc(brDate(p.birth)):''}</p>
+    <p style="white-space:pre-wrap">${esc(text)}</p>
     ${signBlock(`<small>Emitido em ${brDate(todayISO())}</small>`)}`;
   return{text:L.join('\n'),html:letterheadWrap(pl,body)};
 }
@@ -1531,6 +1730,10 @@ function renderSetAtendimento(body){
     <div class="small muted">Cadastre quanto você recebe por sessão em cada convênio. Se o valor muda de uma clínica para outra, informe por local.</div>
     ${S.insurers.length?`<div class="rows">${S.insurers.map(i=>{const diff=S.places.filter(p=>i.prices&&i.prices[p.id]!==undefined&&i.prices[p.id]!=='');return `<button class="row" data-ins="${i.id}"><span class="avatar" style="width:34px;height:34px;font-size:13px">${esc(initials(i.name))}</span><span class="grow"><b>${esc(i.name)}</b><span class="small muted num">${money(i.price)} por sessão${diff.length?` · ${diff.length} local(is) com valor próprio`:''}</span></span><span class="chev">›</span></button>`}).join('')}</div>`:'<div class="empty"><b>Nenhum convênio ainda</b>Adicione os convênios que você atende, como CIMED ou Unimed.</div>'}
     <button class="btn soft block" id="addIns">+ Adicionar convênio</button></div>
+  <div class="section" style="margin-bottom:10px"><div class="label">Feriados nacionais</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <label class="toggle"><span>Não mostrar horários livres em feriados</span><input type="checkbox" id="sHol" ${S.settings.blockHolidays!==false?'checked':''}></label>
+    <div class="small muted">Calculado automaticamente (feriados fixos + Carnaval, Sexta-feira Santa e Corpus Christi) — não precisa cadastrar nada. Com isso ligado, esses dias ficam sem horários livres pra marcar, mas você ainda pode agendar manualmente se precisar atender mesmo assim.</div>
+  </div></div>
   <div class="section" style="margin-bottom:10px"><div class="label">Mensagem geral de confirmação</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
     <textarea class="input" id="sMsg">${esc(S.settings.msg||DEFAULT_MSG)}</textarea>
     <div class="small muted">Usada nos locais sem mensagem própria. Cada clínica ou o particular pode ter a sua: toque no local acima. Use {paciente}, {dia}, {hora}, {local}, {endereco}, {info} e {profissional}.</div>
@@ -1539,6 +1742,7 @@ function renderSetAtendimento(body){
   app.querySelectorAll('[data-ins]').forEach(b=>b.onclick=()=>editInsurer(b.dataset.ins));
   $('#addPlace').onclick=()=>editPlace(null);
   $('#addIns').onclick=()=>editInsurer(null);
+  $('#sHol').onchange=e=>{S.settings.blockHolidays=e.target.checked;save();toast('Preferência salva')};
   $('#sMsg').onchange=e=>{S.settings.msg=e.target.value;save();toast('Mensagem salva')};
   $('#resetMsg').onclick=()=>{S.settings.msg=DEFAULT_MSG;save();render();toast('Texto padrão restaurado')};
 }

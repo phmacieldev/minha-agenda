@@ -6,6 +6,7 @@ import { signToken } from '../../lib/auth';
 import { userToMe } from '../../lib/mappers';
 import { loadResources } from '../../lib/bootstrap';
 import { sendJson } from '../../lib/respond';
+import { checkRateLimit, clientIp } from '../../lib/rateLimit';
 
 const schema = z.object({
   email: z.string().email(),
@@ -20,11 +21,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'invalid_input', details: parsed.error.flatten() });
   }
   const { email, password } = parsed.data;
+  const normalizedEmail = email.toLowerCase();
 
   const pool = getPool();
+  // Limita tentativas por IP (protege contra um atacante varrendo várias
+  // contas) e por e-mail (protege uma conta específica sendo alvo de força
+  // bruta vinda de vários IPs). Conta toda tentativa, não só as erradas —
+  // mais simples e as janelas são generosas o bastante pro uso normal.
+  const ip = clientIp(req);
+  const okIp = await checkRateLimit(pool, `login:ip:${ip}`, 20, 15 * 60 * 1000);
+  const okEmail = await checkRateLimit(pool, `login:email:${normalizedEmail}`, 8, 15 * 60 * 1000);
+  if (!okIp || !okEmail) return res.status(429).json({ error: 'too_many_attempts' });
+
   const result = await pool.query(
     'select id, email, password_hash, name, title, reg_number, signature, email_verified_at from users where email = $1',
-    [email.toLowerCase()]
+    [normalizedEmail]
   );
   const user = result.rows[0];
   // Mesma mensagem genérica se o e-mail não existir ou a senha estiver errada,

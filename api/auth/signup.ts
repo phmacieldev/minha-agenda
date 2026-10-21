@@ -5,6 +5,7 @@ import { getPool } from '../../lib/db';
 import { signToken } from '../../lib/auth';
 import { generateToken, hoursFromNow } from '../../lib/tokens';
 import { sendEmail, verificationEmailHtml } from '../../lib/email';
+import { checkRateLimit, clientIp } from '../../lib/rateLimit';
 
 const schema = z.object({
   email: z.string().email(),
@@ -24,6 +25,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const normalizedEmail = email.toLowerCase();
 
   const pool = getPool();
+  // Evita spam de contas / bombardeio de e-mail de verificação a partir de um
+  // IP só (cada cadastro dispara um e-mail pro endereço informado).
+  const okIp = await checkRateLimit(pool, `signup:ip:${clientIp(req)}`, 8, 60 * 60 * 1000);
+  if (!okIp) return res.status(429).json({ error: 'too_many_attempts' });
+
   const existing = await pool.query('select id from users where email = $1', [normalizedEmail]);
   if (existing.rowCount) {
     return res.status(409).json({ error: 'email_in_use' });
