@@ -1132,8 +1132,14 @@ function editRecord(patientId,recId,pre={}){
 function signBlock(extra){
   return `<div class="sign">${S.profile.signature?`<img src="${S.profile.signature}" alt="Assinatura" style="max-width:220px;max-height:90px;display:block;margin:0 auto 6px">`:'<div class="line"></div>'}${esc(S.profile.name)}${S.profile.title?'<br>'+esc(S.profile.title):''}${S.profile.regNumber?'<br>'+esc(S.profile.regNumber):''}${extra?'<br>'+extra:''}</div>`;
 }
-function letterheadBlock(pl){
-  return pl&&pl.letterhead?`<img src="${pl.letterhead}" alt="Timbre" style="max-width:100%;display:block;margin:0 auto 18px">`:'';
+// O timbre fica como fundo da página (igual papel timbrado de verdade: o
+// conteúdo é escrito por cima dele, não empurrado pra depois da imagem).
+function letterheadWrap(pl,contentHtml){
+  if(!pl||!pl.letterhead)return contentHtml;
+  return `<div style="position:relative">
+    <img src="${pl.letterhead}" alt="Timbre" style="position:absolute;top:0;left:0;width:100%;height:auto;z-index:0;pointer-events:none">
+    <div style="position:relative;z-index:1;padding-top:130px">${contentHtml}</div>
+  </div>`;
 }
 function patientReport(p,{from,to,placeId,ev}){
   const inR=d=>(!from||d>=from)&&(!to||d<=to);
@@ -1148,10 +1154,10 @@ function patientReport(p,{from,to,placeId,ev}){
   if(miss.length)L.push(`Faltas: ${miss.length} (${miss.map(a=>fmtDate(a.date)).join(', ')})`);
   if(ev){L.push('','EVOLUÇÕES');if(!recs.length)L.push('Nenhuma evolução registrada no período.');recs.forEach(r=>{L.push('',`${brDate(r.date)}${r.placeId&&place(r.placeId)?' – '+place(r.placeId).name:''}`,r.text)})}
   L.push('',`${S.profile.name}${S.profile.title?' – '+S.profile.title:''}`,`Emitido em ${brDate(todayISO())}`);
-  const html=`${letterheadBlock(pl)}<h1>Relatório de atendimento</h1><table class="kv">${info.map(([k,v])=>`<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}<tr><th>Período</th><td>${esc(per)}</td></tr><tr><th>Sessões realizadas</th><td>${done.length}${done.length?' – '+done.map(a=>fmtDate(a.date)).join(', '):''}</td></tr>${miss.length?`<tr><th>Faltas</th><td>${miss.length} – ${miss.map(a=>fmtDate(a.date)).join(', ')}</td></tr>`:''}</table>
+  const body=`<h1>Relatório de atendimento</h1><table class="kv">${info.map(([k,v])=>`<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}<tr><th>Período</th><td>${esc(per)}</td></tr><tr><th>Sessões realizadas</th><td>${done.length}${done.length?' – '+done.map(a=>fmtDate(a.date)).join(', '):''}</td></tr>${miss.length?`<tr><th>Faltas</th><td>${miss.length} – ${miss.map(a=>fmtDate(a.date)).join(', ')}</td></tr>`:''}</table>
     ${ev?`<h2>Evoluções</h2>${recs.length?recs.map(r=>`<div class="ev"><b>${brDate(r.date)}${r.placeId&&place(r.placeId)?' – '+esc(place(r.placeId).name):''}</b><p>${esc(r.text)}</p></div>`).join(''):'<p>Nenhuma evolução registrada no período.</p>'}`:''}
     ${signBlock(`<small>Emitido em ${brDate(todayISO())}</small>`)}`;
-  return{text:L.join('\n'),html};
+  return{text:L.join('\n'),html:letterheadWrap(pl,body)};
 }
 
 function clinicReport(placeId,R){
@@ -1164,11 +1170,11 @@ function clinicReport(placeId,R){
   const L=[`RELATÓRIO DE PACIENTES – ${pl.name.toUpperCase()}`,`Período: ${brDate(R.pr.start)} a ${brDate(R.pr.end)}`,`Profissional: ${S.profile.name}${S.profile.title?' – '+S.profile.title:''}`,`Pacientes: ${rows.length} · Sessões realizadas: ${rows.reduce((s,r)=>s+r.done.length,0)}`];
   rows.forEach(r=>{const a=ageOf(r.p.birth);L.push('',`• ${r.p.name}${a!==null?` (${a} anos)`:''} – ${r.pay}${r.p.card?' · carteirinha '+r.p.card:''}`,`  Sessões: ${r.done.length}${r.done.length?' ('+r.done.map(x=>fmtDate(x.date)).join(', ')+')':''}${r.miss.length?` · Faltas: ${r.miss.length}`:''}`);
     if(r.p.diag)L.push(`  Motivo: ${r.p.diag}`);if(r.last)L.push(`  Última evolução (${fmtDate(r.last.date)}): ${r.last.text.replace(/\s*\n\s*/g,' ').slice(0,280)}`)});
-  const html=`${letterheadBlock(pl)}<h1>Relatório de pacientes – ${esc(pl.name)}</h1><p class="meta">Período: ${brDate(R.pr.start)} a ${brDate(R.pr.end)} · Profissional: ${esc(S.profile.name)}${S.profile.title?' – '+esc(S.profile.title):''}</p>
+  const body=`<h1>Relatório de pacientes – ${esc(pl.name)}</h1><p class="meta">Período: ${brDate(R.pr.start)} a ${brDate(R.pr.end)} · Profissional: ${esc(S.profile.name)}${S.profile.title?' – '+esc(S.profile.title):''}</p>
     <table class="grid"><thead><tr><th>Paciente</th><th>Pagamento</th><th>Sessões</th><th>Datas</th><th>Faltas</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.p.name)}${ageOf(r.p.birth)!==null?`<br><small>${ageOf(r.p.birth)} anos</small>`:''}</td><td>${esc(r.pay)}${r.p.card?`<br><small>${esc(r.p.card)}</small>`:''}</td><td>${r.done.length}</td><td>${r.done.map(x=>fmtDate(x.date)).join(', ')}</td><td>${r.miss.length||''}</td></tr>`).join('')}</tbody></table>
     ${rows.some(r=>r.last||r.p.diag)?`<h2>Resumo clínico</h2>${rows.filter(r=>r.last||r.p.diag).map(r=>`<div class="ev"><b>${esc(r.p.name)}</b>${r.p.diag?`<p><i>Motivo:</i> ${esc(r.p.diag)}</p>`:''}${r.last?`<p><i>Última evolução (${fmtDate(r.last.date)}):</i> ${esc(r.last.text)}</p>`:''}</div>`).join('')}`:''}
     ${signBlock()}`;
-  return{text:L.join('\n'),html,count:rows.length};
+  return{text:L.join('\n'),html:letterheadWrap(pl,body),count:rows.length};
 }
 
 function printDoc(title,inner){
