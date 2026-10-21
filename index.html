@@ -1196,10 +1196,19 @@ function viewPatient(id,tab='perfil'){
         ${recs.length?recs.map(r=>{const pl=place(r.placeId);return `<button class="card rec" data-r="${r.id}" style="text-align:left;border:0;width:100%;display:flex;flex-direction:column;gap:6px">
           <span style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b class="num">${brDate(r.date)}</b>${pl?`<span class="small muted" style="display:flex;align-items:center;gap:6px"><span class="swatch" style="width:8px;height:8px;background:${cv(pl.color)}"></span>${esc(pl.name)}</span>`:''}</span>
           <span class="small" style="white-space:pre-wrap;max-height:7.5em;overflow:hidden">${esc(r.text)}</span></button>`}).join(''):'<div class="empty"><b>Prontuário vazio</b>Registre a evolução de cada sessão. Também dá para registrar direto pelo atendimento na agenda.</div>'}`;
-      if(tab==='atend')body=`
+      if(tab==='atend'){
+        // hist vem ordenado do mais futuro pro mais antigo — com uma série
+        // "permanente" (até 2 anos de ocorrências) isso enchia a lista com
+        // datas de 2028+ antes de qualquer sessão de verdade. Mostra só até
+        // 90 dias à frente aqui; o resto (passado inteiro) continua intacto.
+        const horizon=iso(addDays(new Date(),90));
+        const sessList=hist.filter(a=>a.date<=horizon);
+        body=`
         <div class="stats"><div class="stat"><div class="label">Atendimentos</div><div class="v">${done.length}</div></div><div class="stat"><div class="label">A receber</div><div class="v sm">${money(owed)}</div></div></div>
         <button class="btn soft block" id="pNew">Agendar atendimento</button>
-        ${hist.length?`<div class="rows">${hist.slice(0,60).map(a=>{const pl=place(a.placeId);return `<button class="row" data-a="${a.id}"><span class="swatch" style="background:${cv(pl?.color)}"></span><span class="grow"><b class="num">${brDate(a.date)} · ${a.time}</b><span class="small muted">${esc(pl?.name||'')} · ${esc(payName(a))}</span></span><span class="pill st-${a.status}">${STATUS[a.status]}</span></button>`}).join('')}</div>`:'<div class="small muted">Sem atendimentos.</div>'}`;
+        ${sessList.length?`<div class="rows">${sessList.slice(0,60).map(a=>{const pl=place(a.placeId);return `<button class="row" data-a="${a.id}"><span class="swatch" style="background:${cv(pl?.color)}"></span><span class="grow"><b class="num">${brDate(a.date)} · ${a.time}</b><span class="small muted">${esc(pl?.name||'')} · ${esc(payName(a))}</span></span><span class="pill st-${a.status}">${STATUS[a.status]}</span></button>`}).join('')}</div>`:'<div class="small muted">Sem atendimentos.</div>'}
+        ${hist.length>sessList.length?`<div class="small muted" style="margin-top:8px">+ ${hist.length-sessList.length} sessões futuras além de 90 dias (série recorrente).</div>`:''}`;
+      }
       if(tab==='relatorio'){const m=todayISO().slice(0,8)+'01';body=`
         <div class="small muted">Gere um relatório deste paciente para apresentar na clínica ou ao convênio.</div>
         <div class="two"><label class="field"><span>De</span><input class="input" id="rFrom" type="date" value="${ui.prFrom||m}"></label><label class="field"><span>Até</span><input class="input" id="rTo" type="date" value="${ui.prTo||todayISO()}"></label></div>
@@ -1210,17 +1219,29 @@ function viewPatient(id,tab='perfil'){
       if(tab==='docs'){
         const prof=S.settings.icon||'fonoaudiologia';
         const examList=EXAM_CATALOG[prof]||[];
-        body=`
-        <div class="seg solid" id="dType"><button data-v="exame">Solicitação de exame</button><button data-v="laudo">Laudo</button></div>
-        <label class="field"><span>Local (para o timbrado)</span><select class="input" id="dPlace"><option value="">Nenhum</option>${S.places.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>
-        ${docType==='exame'?`
+        const fields=docType==='exame'?`
           ${examList.length?`<div class="field"><span>Exames comuns em ${esc((ICON_PROFESSIONS.find(x=>x.key===prof)||{}).title||'sua área')}</span>
             <div style="display:flex;flex-direction:column;gap:8px">${examList.map((e,i)=>`<label class="toggle"><span>${esc(e)}</span><input type="checkbox" class="dExam" data-i="${i}"></label>`).join('')}</div></div>`:''}
-          <label class="field"><span>Outros exames / observações</span><textarea class="input" id="dExtra" placeholder="Texto livre, entra no fim do documento"></textarea></label>`:`
+          <label class="field"><span>Outros exames / observações</span><textarea class="input" id="dExtra" placeholder="Texto livre, entra no fim do documento"></textarea></label>`
+          :docType==='laudo'?`
           <label class="field"><span>Título do documento</span><input class="input" id="dTitle" value="Laudo"></label>
-          <label class="field"><span>Conteúdo</span><textarea class="input" id="dText" style="min-height:220px" placeholder="Texto do laudo"></textarea></label>`}
+          <label class="field"><span>Conteúdo</span><textarea class="input" id="dText" style="min-height:220px" placeholder="Texto do laudo"></textarea></label>`
+          :`
+          <div class="two"><label class="field"><span>Dias de afastamento</span><input class="input num" id="dDays" type="number" min="0" step="1" placeholder="0 = só comprovar presença"></label>
+          <label class="field"><span>A partir de</span><input class="input" id="dFrom" type="date" value="${todayISO()}"></label></div>
+          <label class="field"><span>Afastamento de</span><input class="input" id="dActivity" placeholder="Ex.: suas atividades laborais"></label>
+          <label class="field"><span>CID-10 (opcional)</span><input class="input" id="dCid" list="cidList" placeholder="Buscar ou digitar o código"></label>
+          <datalist id="cidList">${CID10_CATALOG.map(([c,d])=>`<option value="${c} – ${esc(d)}">`).join('')}</datalist>
+          <span class="small muted" style="font-weight:400">Deixe em branco se a paciente preferir não revelar o diagnóstico no atestado — é direito dela.</span>
+          <label class="field"><span>Observações adicionais</span><textarea class="input" id="dExtra" placeholder="Opcional"></textarea></label>`;
+        body=`
+        <div class="seg solid" id="dType"><button data-v="exame">Exame</button><button data-v="laudo">Laudo</button><button data-v="atestado">Atestado</button></div>
+        <label class="field"><span>Local (para o timbrado)</span><select class="input" id="dPlace"><option value="">Nenhum</option>${S.places.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>
+        ${fields}
         <pre class="share" id="dOut"></pre>
-        <div class="btnrow"><button class="btn primary" id="dCopy">Copiar texto</button><button class="btn ghost" id="dPrint">Imprimir ou PDF</button></div>`;
+        <div class="btnrow"><button class="btn primary" id="dCopy">Copiar texto</button><button class="btn ghost" id="dPrint">Imprimir ou PDF</button></div>
+        <span class="small muted" style="font-weight:400">No iPhone, se o app estiver instalado na tela de início, abra pelo Safari normal pra conseguir imprimir ou salvar PDF — é uma limitação do próprio iOS em apps instalados.</span>
+        ${p.phone?`<a class="btn wa block" id="dWa" href="#" target="_blank" rel="noopener" style="text-decoration:none">Enviar por WhatsApp</a>`:''}`;
       }
       b.innerHTML=`
         <div style="display:flex;align-items:center;gap:12px"><span class="avatar" style="width:48px;height:48px;font-size:17px">${esc(initials(p.name))}</span>
@@ -1270,19 +1291,25 @@ function viewPatient(id,tab='perfil'){
             const extra=$b('#dExtra')?.value.trim()||'';
             return examRequestDoc(p,{placeId:docPlace,items,extra});
           }
+          if(docType==='atestado'){
+            return atestadoDoc(p,{placeId:docPlace,days:$b('#dDays')?.value,from:$b('#dFrom')?.value,activity:$b('#dActivity')?.value.trim(),cid:$b('#dCid')?.value.trim(),extra:$b('#dExtra')?.value.trim()||''});
+          }
           return laudoDoc(p,{placeId:docPlace,title:$b('#dTitle')?.value,text:$b('#dText')?.value||''});
         };
-        const upd=()=>{$b('#dOut').textContent=buildDoc().text};
+        const docTitle=()=>({exame:'Solicitação de exames',laudo:'Laudo',atestado:'Atestado'})[docType];
+        const upd=()=>{$b('#dOut').textContent=buildDoc().text;if($b('#dWa'))$b('#dWa').href=waLink(p.phone,buildDoc().text)};
         $b('#dPlace').onchange=()=>{docPlace=$b('#dPlace').value;upd()};
         if(docType==='exame'){
           b.querySelectorAll('.dExam').forEach(x=>{x.checked=examChecked.has(+x.dataset.i);x.onchange=()=>{const i=+x.dataset.i;if(x.checked)examChecked.add(i);else examChecked.delete(i);upd()}});
           $b('#dExtra').oninput=upd;
+        }else if(docType==='atestado'){
+          ['#dDays','#dFrom','#dActivity','#dCid','#dExtra'].forEach(s=>{const el=$b(s);if(el)el[el.tagName==='SELECT'?'onchange':'oninput']=upd});
         }else{
           $b('#dTitle').oninput=upd;$b('#dText').oninput=upd;
         }
         upd();
         $b('#dCopy').onclick=()=>copy($b('#dOut').textContent);
-        $b('#dPrint').onclick=()=>printDoc((docType==='exame'?'Solicitação de exames – ':'Laudo – ')+p.name,buildDoc().html);
+        $b('#dPrint').onclick=()=>printDoc(docTitle()+' – '+p.name,buildDoc().html);
       }
     };
     draw();
@@ -1379,6 +1406,39 @@ function laudoDoc(p,{placeId,title,text}){
   const body=`<h1>${esc(t)}</h1>
     <p class="meta">Paciente: ${esc(p.name)}${age!==null?` (${age} anos)`:''}${p.birth?' · Nascimento: '+esc(brDate(p.birth)):''}</p>
     <p style="white-space:pre-wrap">${esc(text)}</p>
+    ${signBlock(`<small>Emitido em ${brDate(todayISO())}</small>`)}`;
+  return{text:L.join('\n'),html:letterheadWrap(pl,body)};
+}
+
+// Rascunho inicial de CID-10 mais comuns nas profissões deste app — ajuste
+// livremente (não é lista oficial completa, só um atalho pra busca). O campo
+// de texto livre no formulário cobre qualquer código fora daqui.
+const CID10_CATALOG=[
+  ['F80.0','Transtorno específico da articulação da fala'],['F80.1','Transtorno expressivo da linguagem'],['F80.2','Transtorno receptivo da linguagem'],
+  ['F84.0','Autismo infantil'],['F90.0','Distúrbio da atividade e da atenção (TDAH)'],['F98.5','Gagueira'],
+  ['H90.3','Perda de audição neurossensorial bilateral'],['H91.9','Perda de audição não especificada'],
+  ['M54.5','Dor lombar baixa'],['M54.2','Cervicalgia'],['M75.1','Síndrome do manguito rotador'],['M77.1','Epicondilite lateral'],
+  ['M25.5','Dor articular'],['M79.1','Mialgia'],['S83.5','Entorse do joelho'],['G56.0','Síndrome do túnel do carpo'],
+  ['F32.0','Episódio depressivo leve'],['F32.1','Episódio depressivo moderado'],['F32.9','Episódio depressivo não especificado'],
+  ['F41.1','Transtorno de ansiedade generalizada'],['F41.0','Transtorno de pânico'],['F43.1','Transtorno de estresse pós-traumático'],
+  ['F43.2','Transtornos de adaptação'],['F51.0','Insônia não orgânica'],['F10.2','Síndrome de dependência do álcool'],
+  ['F84.5','Síndrome de Asperger'],['F70','Retardo mental leve'],['F81.0','Transtorno específico de leitura'],['F81.2','Transtorno específico da habilidade em aritmética'],
+  ['E66.0','Obesidade devida a excesso de calorias'],['E66.9','Obesidade não especificada'],['E86','Depleção de volume (desidratação)'],
+  ['E11','Diabetes mellitus tipo 2'],['E78.0','Hipercolesterolemia pura'],['E44.1','Desnutrição proteico-calórica leve'],
+  ['R63.4','Perda de peso anormal'],['Z71.3','Aconselhamento dietético'],
+  ['Z00.1','Exame de rotina de saúde da criança'],['P07.3','Outros recém-nascidos pré-termo'],['R62.0','Atraso do desenvolvimento'],
+];
+function atestadoDoc(p,{placeId,days,from,activity,cid,extra}){
+  const pl=placeId?place(placeId):null;const dias=+days||0;
+  const periodo=dias?`necessitando de afastamento de ${activity||'suas atividades'} por ${dias} dia${dias===1?'':'s'}, a partir de ${brDate(from||todayISO())}`:`esteve sob meus cuidados profissionais em ${brDate(from||todayISO())}`;
+  const L=['ATESTADO','',`Atesto para os devidos fins que ${p.name}, ${periodo}.`];
+  if(cid)L.push(`CID-10: ${cid}`);
+  if(extra)L.push('',extra);
+  L.push('','',`${S.profile.name}${S.profile.title?' – '+S.profile.title:''}`,`Emitido em ${brDate(todayISO())}`);
+  const body=`<h1>Atestado</h1>
+    <p>Atesto para os devidos fins que <b>${esc(p.name)}</b>, ${esc(periodo)}.</p>
+    ${cid?`<p class="meta">CID-10: ${esc(cid)}</p>`:''}
+    ${extra?`<p style="white-space:pre-wrap">${esc(extra)}</p>`:''}
     ${signBlock(`<small>Emitido em ${brDate(todayISO())}</small>`)}`;
   return{text:L.join('\n'),html:letterheadWrap(pl,body)};
 }
