@@ -703,12 +703,16 @@ const OB_STEPS=['Sobre você','Onde você atende','Criar acesso'];
 function onboarding(){
   $('#tabs').hidden=true;$('#fab').hidden=true;
   let places=[{name:'Local 1',color:'p1'},{name:'Local 2',color:'p4'},{name:'Particular',color:'p5'}];
-  let openCol=-1,obName='',obTitle='',obEmail='',obPassword='',mode='signup',step=1;
+  let openCol=-1,obName='',obTitle='',obEmail='',obPassword='',obIcon='fonoaudiologia',mode='signup',step=1;
   const draw=()=>{
     const enterTarget=mode!=='signup'?'#liGo':step<3?'#obNext':'#obGo';
     const stepHtml=step===1?`
         <label class="field"><span>Seu nome</span><input class="input" id="obName" placeholder="Ex.: Ana Souza" autocomplete="name"></label>
         <label class="field"><span>Profissão (opcional)</span><input class="input" id="obTitle" placeholder="Ex.: Fisioterapeuta"></label>
+        <div class="field"><span>Ícone do app</span>
+          <span class="small muted" style="font-weight:400">Dá pra trocar depois em Ajustes, mas escolher certo aqui já evita ter que reinstalar o atalho da tela de início pra pegar o ícone novo.</span>
+          <div class="iconpick" id="obIconPick">${ICON_PROFESSIONS.map(p=>`<button type="button" data-v="${p.key}"><img src="${iconBase(p.key)?iconBase(p.key)+'icon-192.png':'icon-192.png?v=fono2'}" alt=""><span>${esc(p.name)}</span></button>`).join('')}</div>
+        </div>
         <button class="btn primary block" id="obNext">Continuar</button>
       `:step===2?`
         <div class="field"><span>Onde você atende</span>
@@ -741,6 +745,8 @@ function onboarding(){
     if(mode==='signup'&&step===1){
       $('#obName').value=obName;$('#obTitle').value=obTitle;
       $('#obName').oninput=e=>obName=e.target.value;$('#obTitle').oninput=e=>obTitle=e.target.value;
+      $('#obIconPick').querySelectorAll('button').forEach(b=>{b.classList.toggle('on',b.dataset.v===obIcon);
+        b.onclick=()=>{obIcon=b.dataset.v;$('#obIconPick').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b))}});
       $('#obNext').onclick=()=>{
         const name=$('#obName').value.trim();
         if(!name){toast('Escreva seu nome');$('#obName').focus();return}
@@ -770,8 +776,8 @@ function onboarding(){
         const btn=$('#obGo');btn.disabled=true;
         try{await apiSignup(email,password,obName,obTitle)}
         catch(e){btn.disabled=false;toast(e.body&&e.body.error==='email_in_use'?'Esse e-mail já tem conta':(e.body&&e.body.error==='invalid_input'?'Confira o e-mail e a senha (mínimo 6 caracteres)':'Não consegui criar a conta. Tente de novo.'));return}
-        S={v:2,profile:{name:obName,title:obTitle,regNumber:'',signature:'',emailVerified:false},places:pl,patients:[],appts:[],insurers:[],exceptions:[],settings:{msg:DEFAULT_MSG}};
-        save();go('horarios');toast('Conta criada! Agora ajuste seus dias e horários');
+        S={v:2,profile:{name:obName,title:obTitle,regNumber:'',signature:'',emailVerified:false},places:pl,patients:[],appts:[],insurers:[],exceptions:[],settings:{msg:DEFAULT_MSG,icon:obIcon}};
+        save();applyIcon();go('horarios');toast('Conta criada! Agora ajuste seus dias e horários');
       };
     }else{
       $('#liEmail').oninput=e=>obEmail=e.target.value;$('#liPassword').oninput=e=>obPassword=e.target.value;
