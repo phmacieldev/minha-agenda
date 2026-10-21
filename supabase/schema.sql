@@ -21,6 +21,10 @@ alter table users add column if not exists email_verified_at timestamptz;
 alter table users add column if not exists verification_token text;
 alter table users add column if not exists verification_token_expires_at timestamptz;
 
+-- Dados do perfil usados na hora de montar os relatórios/documentos.
+alter table users add column if not exists reg_number text;
+alter table users add column if not exists signature text; -- imagem (data URL) comprimida no cliente
+
 create table if not exists places (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references users(id) on delete cascade,

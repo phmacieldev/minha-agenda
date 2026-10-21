@@ -7,7 +7,17 @@ import { getPool } from '../../lib/db';
 const profileSchema = z.object({
   name: z.string().min(1).optional(),
   title: z.string().optional(),
+  regNumber: z.string().max(80).optional(),
+  signature: z.string().max(300000).optional(), // data URL (imagem comprimida no cliente)
 });
+
+// Nomes dos campos no JSON (camelCase) → coluna no Postgres (snake_case).
+const PROFILE_COLUMNS: Record<string, string> = {
+  name: 'name',
+  title: 'title',
+  regNumber: 'reg_number',
+  signature: 'signature',
+};
 
 const passwordSchema = z.object({
   currentPassword: z.string().min(1),
@@ -21,7 +31,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (req.method === 'GET') {
       const result = await pool.query(
-        'select id, email, name, title, email_verified_at from users where id = $1',
+        'select id, email, name, title, reg_number, signature, email_verified_at from users where id = $1',
         [auth.userId]
       );
       if (!result.rowCount) return res.status(404).json({ error: 'not_found' });
@@ -31,6 +41,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         email: row.email,
         name: row.name,
         title: row.title,
+        regNumber: row.reg_number,
+        signature: row.signature,
         emailVerified: Boolean(row.email_verified_at),
       });
     }
@@ -63,14 +75,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       let i = 1;
       for (const [key, value] of Object.entries(p)) {
         if (value === undefined) continue;
-        fields.push(`${key} = $${i}`);
+        fields.push(`${PROFILE_COLUMNS[key]} = $${i}`);
         values.push(value);
         i++;
       }
       if (!fields.length) return res.status(400).json({ error: 'bad_request', message: 'Nenhum campo para atualizar' });
       values.push(auth.userId);
       const result = await pool.query(
-        `update users set ${fields.join(', ')} where id = $${i} returning id, email, name, title, email_verified_at`,
+        `update users set ${fields.join(', ')} where id = $${i} returning id, email, name, title, reg_number, signature, email_verified_at`,
         values
       );
       const row = result.rows[0];
@@ -79,6 +91,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         email: row.email,
         name: row.name,
         title: row.title,
+        regNumber: row.reg_number,
+        signature: row.signature,
         emailVerified: Boolean(row.email_verified_at),
       });
     }
