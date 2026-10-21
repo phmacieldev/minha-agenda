@@ -708,6 +708,34 @@ function fillMsg(a){
 const placeMsgSuggestion=pl=>pl.kind==='particular'?'Olá, {paciente}! Confirmando seu atendimento particular {dia} às {hora}. Endereço: {endereco}. {info} Posso confirmar?':'Olá, {paciente}! Confirmando seu atendimento {dia} às {hora} na {local} ({endereco}). {info} Posso confirmar?';
 
 /* ---------- onboarding ---------- */
+function resetPasswordScreen(token){
+  $('#tabs').hidden=true;$('#fab').hidden=true;
+  let pw='',pw2='';
+  const draw=()=>{
+    app.innerHTML=`<div class="ob" data-enter="#rpGo">
+      <div class="hero"><h1>Nova senha</h1><p class="muted" style="margin:0">Escolha uma senha nova para entrar na sua conta.</p></div>
+      ${pwField('rpPw1','Nova senha',{placeholder:'Pelo menos 6 caracteres',autocomplete:'new-password'})}
+      ${pwField('rpPw2','Confirmar nova senha',{autocomplete:'new-password'})}
+      <button class="btn primary block" id="rpGo">Salvar nova senha</button>
+      <button class="btn ghost block" id="rpCancel">Cancelar</button>
+    </div>`;
+    $('#rpPw1').value=pw;$('#rpPw2').value=pw2;
+    $('#rpPw1').oninput=e=>pw=e.target.value;$('#rpPw2').oninput=e=>pw2=e.target.value;
+    wireEye('rpPw1');wireEye('rpPw2');
+    $('#rpCancel').onclick=()=>{history.replaceState(null,'',location.pathname);render()};
+    $('#rpGo').onclick=async()=>{
+      if(pw.length<6){toast('A senha precisa ter pelo menos 6 caracteres');return}
+      if(pw!==pw2){toast('As senhas não são iguais');return}
+      const btn=$('#rpGo');btn.disabled=true;
+      try{
+        await apiFetch('/auth/verify?action=reset',{method:'POST',body:JSON.stringify({token,newPassword:pw})});
+        history.replaceState(null,'',location.pathname);
+        toast('Senha alterada! Entre com a nova senha.');render();
+      }catch(e){btn.disabled=false;toast(e.body&&e.body.error==='invalid_token'?'Link expirado ou inválido. Peça um novo.':'Não consegui trocar a senha. Tente de novo.')}
+    };
+  };
+  draw();
+}
 const OB_STEPS=['Sobre você','Onde você atende','Criar acesso'];
 function onboarding(){
   $('#tabs').hidden=true;$('#fab').hidden=true;
@@ -746,6 +774,7 @@ function onboarding(){
         <label class="field"><span>E-mail</span><input class="input" id="liEmail" type="email" placeholder="voce@email.com" autocomplete="email"></label>
         ${pwField('liPassword','Senha',{autocomplete:'current-password'})}
         <button class="btn primary block" id="liGo">Entrar</button>
+        <button class="link" id="liForgot" type="button" style="align-self:center">Esqueci minha senha</button>
       `}
       <button class="btn ghost block" id="obDemo">Ver com exemplos primeiro</button>
     </div>`;
@@ -803,6 +832,15 @@ function onboarding(){
         try{S=await apiLogin(email,password);save();render();toast('Bem-vinda de volta!')}
         catch(e){btn.disabled=false;toast('E-mail ou senha incorretos')}
       };
+      $('#liForgot').onclick=async()=>{
+        const email=($('#liEmail').value||'').trim();
+        if(!email){toast('Digite seu e-mail no campo acima primeiro');$('#liEmail').focus();return}
+        const btn=$('#liForgot');btn.disabled=true;
+        try{await apiFetch('/auth/verify?action=forgot',{method:'POST',body:JSON.stringify({email})});
+          toast('Se esse e-mail tiver conta, mandamos um link pra trocar a senha')}
+        catch(e){toast('Não consegui enviar agora. Tente de novo em instantes')}
+        btn.disabled=false;
+      };
     }
     $('#obDemo').onclick=()=>{S=demo();save();go('agenda');toast('Exemplos carregados. Apague em Ajustes quando quiser.')};
   };
@@ -841,6 +879,8 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>go(b.dataset.tab));
 $('#fab').onclick=()=>{if(ui.tab==='horarios')editException(null);else editAppt(null,{date:ui.sel})};
 
 function render(){
+  const resetToken=new URLSearchParams(location.search).get('reset');
+  if(resetToken){resetPasswordScreen(resetToken);return}
   if(!S){$('#demoBar').hidden=true;document.body.classList.remove('has-demobar');onboarding();return}
   const demoBar=$('#demoBar');demoBar.hidden=!S.demo;document.body.classList.toggle('has-demobar',!!S.demo);
   demoBar.querySelector('#demoCreate').onclick=()=>{S=null;try{localStorage.removeItem(KEY)}catch(e){}render()};

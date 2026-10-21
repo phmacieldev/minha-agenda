@@ -25,6 +25,18 @@ alter table users add column if not exists verification_token_expires_at timesta
 alter table users add column if not exists reg_number text;
 alter table users add column if not exists signature text; -- imagem (data URL) comprimida no cliente
 
+-- Recuperação de senha (token separado do de verificação de e-mail, pra um
+-- não invalidar o outro se a usuária pedir os dois antes de usar algum).
+alter table users add column if not exists reset_token text;
+alter table users add column if not exists reset_token_expires_at timestamptz;
+
+-- Limitador de tentativas (login, cadastro, recuperação de senha) — ver lib/rateLimit.ts.
+create table if not exists rate_limits (
+  key text primary key,
+  count int not null default 1,
+  reset_at timestamptz not null
+);
+
 create table if not exists places (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references users(id) on delete cascade,

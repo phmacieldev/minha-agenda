@@ -45,3 +45,15 @@ export function verificationEmailHtml(name: string, verifyUrl: string): string {
     </div>
   `;
 }
+
+export function resetPasswordEmailHtml(name: string, resetUrl: string): string {
+  return `
+    <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+      <h2 style="color:#C2256A">Minha Agenda</h2>
+      <p>Olá, ${name}!</p>
+      <p>Alguém (provavelmente você) pediu pra trocar a senha dessa conta. Toque no botão abaixo pra escolher uma nova senha:</p>
+      <p><a href="${resetUrl}" style="display:inline-block;background:#C2256A;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">Trocar senha</a></p>
+      <p style="color:#666;font-size:13px">Esse link vale por 2 horas. Se não foi você, pode ignorar este e-mail — sua senha continua a mesma.</p>
+    </div>
+  `;
+}
