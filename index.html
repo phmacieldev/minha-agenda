@@ -1730,6 +1730,11 @@ function renderSetPerfil(body){
     <div class="small muted">Conectado como <b>${esc(AUTH.email)}</b>. Suas alterações sincronizam automaticamente entre aparelhos.</div>
     <button class="btn ghost block" id="syncNow">Sincronizar agora</button>
   </div></div>
+  <div class="section"><div class="label">Notificação diária</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <div class="small muted">Um aviso de bom dia (por volta das 7h) com quantos atendimentos você tem hoje — só nos dias em que tiver algo marcado.</div>
+    <label class="toggle"><span>Ativar notificação</span><input type="checkbox" id="pushToggle"></label>
+    <div class="small muted" id="pushHint" hidden></div>
+  </div></div>
   <div class="section"><div class="label">Trocar senha</div><div class="card" data-enter="#pwSave" style="display:flex;flex-direction:column;gap:12px">
     ${pwField('pwCurrent','Senha atual',{autocomplete:'current-password'})}
     ${pwField('pwNew','Nova senha',{placeholder:'Pelo menos 6 caracteres',autocomplete:'new-password'})}
@@ -1769,6 +1774,27 @@ function renderSetPerfil(body){
     apiFetch('/auth/me').then(me=>{paint(!!me.emailVerified);save()}).catch(()=>{});
     btn.onclick=async()=>{btn.disabled=true;try{const r=await apiFetch('/auth/verify',{method:'POST'});toast(r.alreadyVerified?'Esse e-mail já estava confirmado':'E-mail de confirmação reenviado')}catch(e){toast('Não consegui reenviar agora')}btn.disabled=false};
     $('#syncNow').onclick=async()=>{toast('Sincronizando…');try{await pushAll();toast('Sincronizado')}catch(e){toast('Não consegui sincronizar agora')}};
+    (async()=>{
+      const pt=$('#pushToggle'),hint=$('#pushHint');
+      const showHint=msg=>{hint.hidden=!msg;hint.textContent=msg||''};
+      if(!('serviceWorker' in navigator)||!('PushManager' in window)){pt.disabled=true;showHint('Esse navegador não suporta notificação push.');return}
+      try{
+        const reg=await navigator.serviceWorker.ready;
+        const sub=await reg.pushManager.getSubscription();
+        pt.checked=!!sub;
+      }catch(e){}
+      pt.onchange=async()=>{
+        pt.disabled=true;
+        try{
+          if(pt.checked){await enablePush();toast('Notificação diária ativada')}
+          else{await disablePush();toast('Notificação diária desativada')}
+        }catch(e){
+          pt.checked=!pt.checked;
+          showHint(e.message==='denied'?'Permissão de notificação negada — ative nas configurações do navegador/aparelho.':'Não consegui ativar agora. Tente de novo.');
+        }
+        pt.disabled=false;
+      };
+    })();
     wireEye('pwCurrent');wireEye('pwNew');
     $('#pwSave').onclick=async()=>{
       const cur=$('#pwCurrent').value,nw=$('#pwNew').value;
@@ -1928,8 +1954,37 @@ function editPlace(id){
   });
 }
 
+// Chave pública VAPID (não é segredo — a privada fica só no servidor).
+// Precisa bater com VAPID_PRIVATE_KEY configurada na API.
+const VAPID_PUBLIC_KEY='BGA54CzIeSKKdnvOTfYU1ad7uFPvL9ZIuvXbZLL4_kpXNuf8Y9prPdmIs_aJ7rU1cK3Ti3YqBmo1Ao_5zKjqKE4';
+function urlBase64ToUint8Array(base64){
+  const padding='='.repeat((4-base64.length%4)%4);
+  const base64Safe=(base64+padding).replace(/-/g,'+').replace(/_/g,'/');
+  const raw=atob(base64Safe);
+  return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
+}
+async function enablePush(){
+  if(!('serviceWorker' in navigator)||!('PushManager' in window))throw new Error('unsupported');
+  const perm=await Notification.requestPermission();
+  if(perm!=='granted')throw new Error('denied');
+  const reg=await navigator.serviceWorker.ready;
+  const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(VAPID_PUBLIC_KEY)});
+  const json=sub.toJSON();
+  await apiFetch('/auth/me?action=push-subscribe',{method:'PUT',body:JSON.stringify({endpoint:json.endpoint,keys:json.keys})});
+}
+async function disablePush(){
+  if(!('serviceWorker' in navigator))return;
+  const reg=await navigator.serviceWorker.ready;
+  const sub=await reg.pushManager.getSubscription();
+  if(!sub)return;
+  await sub.unsubscribe();
+  await apiFetch('/auth/me?action=push-unsubscribe',{method:'DELETE',body:JSON.stringify({endpoint:sub.endpoint})}).catch(()=>{});
+}
+
 render();
-if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
+// localhost conta como contexto seguro mesmo em http — deixa testar push em
+// dev local, não só depois de publicado (só https funcionava antes).
+if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('sw.js').catch(()=>{});
 })();
 </script>
 
