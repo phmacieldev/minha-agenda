@@ -1,6 +1,7 @@
 {
   "crons": [
-    { "path": "/api/cron/backup", "schedule": "0 7 * * *" }
+    { "path": "/api/cron/backup", "schedule": "0 7 * * *" },
+    { "path": "/api/cron/backup?job=digest", "schedule": "0 10 * * *" }
   ],
   "headers": [
     {

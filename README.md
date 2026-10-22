@@ -131,4 +131,6 @@ Se mudar o schema (`supabase/schema.sql`) depois de já ter subido o banco uma v
 
 **Backup automático do banco:** a Vercel Cron chama `/api/cron/backup` 1x por dia (07:00 UTC — o plano Hobby só permite 1x/dia mesmo), que salva um dump de todas as tabelas como uma linha JSON na própria tabela `backups` e apaga cópias além das últimas 14 (duas semanas), pra nunca crescer sem limite. É uma rede de segurança a nível de banco — separado do botão "Salvar cópia agora" em Ajustes, que é a cópia local (JSON) que a própria usuária guarda no celular/nuvem pessoal.
 
+**Testar a restauração do backup:** `npm run db:restore-drill` (só contra o banco local — recusa rodar se `DATABASE_URL` parecer apontar pra produção/Supabase). Gera um snapshot igual ao cron faria, grava na tabela `backups`, restaura num banco temporário à parte (recriando o schema do zero + reinserindo os dados) e confere se as contagens batem, depois apaga tudo que criou. Backup que nunca foi restaurado é só uma esperança — vale rodar de vez em quando pra confirmar que o dump continua restaurável.
+
 Nunca commite `.env` nem `.env.local` — já estão no `.gitignore`.

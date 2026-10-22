@@ -1196,10 +1196,19 @@ function viewPatient(id,tab='perfil'){
         ${recs.length?recs.map(r=>{const pl=place(r.placeId);return `<button class="card rec" data-r="${r.id}" style="text-align:left;border:0;width:100%;display:flex;flex-direction:column;gap:6px">
           <span style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b class="num">${brDate(r.date)}</b>${pl?`<span class="small muted" style="display:flex;align-items:center;gap:6px"><span class="swatch" style="width:8px;height:8px;background:${cv(pl.color)}"></span>${esc(pl.name)}</span>`:''}</span>
           <span class="small" style="white-space:pre-wrap;max-height:7.5em;overflow:hidden">${esc(r.text)}</span></button>`}).join(''):'<div class="empty"><b>Prontuário vazio</b>Registre a evolução de cada sessão. Também dá para registrar direto pelo atendimento na agenda.</div>'}`;
-      if(tab==='atend')body=`
+      if(tab==='atend'){
+        // hist vem ordenado do mais futuro pro mais antigo — com uma série
+        // "permanente" (até 2 anos de ocorrências) isso enchia a lista com
+        // datas de 2028+ antes de qualquer sessão de verdade. Mostra só até
+        // 90 dias à frente aqui; o resto (passado inteiro) continua intacto.
+        const horizon=iso(addDays(new Date(),90));
+        const sessList=hist.filter(a=>a.date<=horizon);
+        body=`
         <div class="stats"><div class="stat"><div class="label">Atendimentos</div><div class="v">${done.length}</div></div><div class="stat"><div class="label">A receber</div><div class="v sm">${money(owed)}</div></div></div>
         <button class="btn soft block" id="pNew">Agendar atendimento</button>
-        ${hist.length?`<div class="rows">${hist.slice(0,60).map(a=>{const pl=place(a.placeId);return `<button class="row" data-a="${a.id}"><span class="swatch" style="background:${cv(pl?.color)}"></span><span class="grow"><b class="num">${brDate(a.date)} · ${a.time}</b><span class="small muted">${esc(pl?.name||'')} · ${esc(payName(a))}</span></span><span class="pill st-${a.status}">${STATUS[a.status]}</span></button>`}).join('')}</div>`:'<div class="small muted">Sem atendimentos.</div>'}`;
+        ${sessList.length?`<div class="rows">${sessList.slice(0,60).map(a=>{const pl=place(a.placeId);return `<button class="row" data-a="${a.id}"><span class="swatch" style="background:${cv(pl?.color)}"></span><span class="grow"><b class="num">${brDate(a.date)} · ${a.time}</b><span class="small muted">${esc(pl?.name||'')} · ${esc(payName(a))}</span></span><span class="pill st-${a.status}">${STATUS[a.status]}</span></button>`}).join('')}</div>`:'<div class="small muted">Sem atendimentos.</div>'}
+        ${hist.length>sessList.length?`<div class="small muted" style="margin-top:8px">+ ${hist.length-sessList.length} sessões futuras além de 90 dias (série recorrente).</div>`:''}`;
+      }
       if(tab==='relatorio'){const m=todayISO().slice(0,8)+'01';body=`
         <div class="small muted">Gere um relatório deste paciente para apresentar na clínica ou ao convênio.</div>
         <div class="two"><label class="field"><span>De</span><input class="input" id="rFrom" type="date" value="${ui.prFrom||m}"></label><label class="field"><span>Até</span><input class="input" id="rTo" type="date" value="${ui.prTo||todayISO()}"></label></div>
@@ -1210,17 +1219,29 @@ function viewPatient(id,tab='perfil'){
       if(tab==='docs'){
         const prof=S.settings.icon||'fonoaudiologia';
         const examList=EXAM_CATALOG[prof]||[];
-        body=`
-        <div class="seg solid" id="dType"><button data-v="exame">Solicitação de exame</button><button data-v="laudo">Laudo</button></div>
-        <label class="field"><span>Local (para o timbrado)</span><select class="input" id="dPlace"><option value="">Nenhum</option>${S.places.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>
-        ${docType==='exame'?`
+        const fields=docType==='exame'?`
           ${examList.length?`<div class="field"><span>Exames comuns em ${esc((ICON_PROFESSIONS.find(x=>x.key===prof)||{}).title||'sua área')}</span>
             <div style="display:flex;flex-direction:column;gap:8px">${examList.map((e,i)=>`<label class="toggle"><span>${esc(e)}</span><input type="checkbox" class="dExam" data-i="${i}"></label>`).join('')}</div></div>`:''}
-          <label class="field"><span>Outros exames / observações</span><textarea class="input" id="dExtra" placeholder="Texto livre, entra no fim do documento"></textarea></label>`:`
+          <label class="field"><span>Outros exames / observações</span><textarea class="input" id="dExtra" placeholder="Texto livre, entra no fim do documento"></textarea></label>`
+          :docType==='laudo'?`
           <label class="field"><span>Título do documento</span><input class="input" id="dTitle" value="Laudo"></label>
-          <label class="field"><span>Conteúdo</span><textarea class="input" id="dText" style="min-height:220px" placeholder="Texto do laudo"></textarea></label>`}
+          <label class="field"><span>Conteúdo</span><textarea class="input" id="dText" style="min-height:220px" placeholder="Texto do laudo"></textarea></label>`
+          :`
+          <div class="two"><label class="field"><span>Dias de afastamento</span><input class="input num" id="dDays" type="number" min="0" step="1" placeholder="0 = só comprovar presença"></label>
+          <label class="field"><span>A partir de</span><input class="input" id="dFrom" type="date" value="${todayISO()}"></label></div>
+          <label class="field"><span>Afastamento de</span><input class="input" id="dActivity" placeholder="Ex.: suas atividades laborais"></label>
+          <label class="field"><span>CID-10 (opcional)</span><input class="input" id="dCid" list="cidList" placeholder="Buscar ou digitar o código"></label>
+          <datalist id="cidList">${CID10_CATALOG.map(([c,d])=>`<option value="${c} – ${esc(d)}">`).join('')}</datalist>
+          <span class="small muted" style="font-weight:400">Deixe em branco se a paciente preferir não revelar o diagnóstico no atestado — é direito dela.</span>
+          <label class="field"><span>Observações adicionais</span><textarea class="input" id="dExtra" placeholder="Opcional"></textarea></label>`;
+        body=`
+        <div class="seg solid" id="dType"><button data-v="exame">Exame</button><button data-v="laudo">Laudo</button><button data-v="atestado">Atestado</button></div>
+        <label class="field"><span>Local (para o timbrado)</span><select class="input" id="dPlace"><option value="">Nenhum</option>${S.places.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>
+        ${fields}
         <pre class="share" id="dOut"></pre>
-        <div class="btnrow"><button class="btn primary" id="dCopy">Copiar texto</button><button class="btn ghost" id="dPrint">Imprimir ou PDF</button></div>`;
+        <div class="btnrow"><button class="btn primary" id="dCopy">Copiar texto</button><button class="btn ghost" id="dPrint">Imprimir ou PDF</button></div>
+        <span class="small muted" style="font-weight:400">No iPhone, se o app estiver instalado na tela de início, abra pelo Safari normal pra conseguir imprimir ou salvar PDF — é uma limitação do próprio iOS em apps instalados.</span>
+        ${p.phone?`<a class="btn wa block" id="dWa" href="#" target="_blank" rel="noopener" style="text-decoration:none">Enviar por WhatsApp</a>`:''}`;
       }
       b.innerHTML=`
         <div style="display:flex;align-items:center;gap:12px"><span class="avatar" style="width:48px;height:48px;font-size:17px">${esc(initials(p.name))}</span>
@@ -1270,19 +1291,25 @@ function viewPatient(id,tab='perfil'){
             const extra=$b('#dExtra')?.value.trim()||'';
             return examRequestDoc(p,{placeId:docPlace,items,extra});
           }
+          if(docType==='atestado'){
+            return atestadoDoc(p,{placeId:docPlace,days:$b('#dDays')?.value,from:$b('#dFrom')?.value,activity:$b('#dActivity')?.value.trim(),cid:$b('#dCid')?.value.trim(),extra:$b('#dExtra')?.value.trim()||''});
+          }
           return laudoDoc(p,{placeId:docPlace,title:$b('#dTitle')?.value,text:$b('#dText')?.value||''});
         };
-        const upd=()=>{$b('#dOut').textContent=buildDoc().text};
+        const docTitle=()=>({exame:'Solicitação de exames',laudo:'Laudo',atestado:'Atestado'})[docType];
+        const upd=()=>{$b('#dOut').textContent=buildDoc().text;if($b('#dWa'))$b('#dWa').href=waLink(p.phone,buildDoc().text)};
         $b('#dPlace').onchange=()=>{docPlace=$b('#dPlace').value;upd()};
         if(docType==='exame'){
           b.querySelectorAll('.dExam').forEach(x=>{x.checked=examChecked.has(+x.dataset.i);x.onchange=()=>{const i=+x.dataset.i;if(x.checked)examChecked.add(i);else examChecked.delete(i);upd()}});
           $b('#dExtra').oninput=upd;
+        }else if(docType==='atestado'){
+          ['#dDays','#dFrom','#dActivity','#dCid','#dExtra'].forEach(s=>{const el=$b(s);if(el)el[el.tagName==='SELECT'?'onchange':'oninput']=upd});
         }else{
           $b('#dTitle').oninput=upd;$b('#dText').oninput=upd;
         }
         upd();
         $b('#dCopy').onclick=()=>copy($b('#dOut').textContent);
-        $b('#dPrint').onclick=()=>printDoc((docType==='exame'?'Solicitação de exames – ':'Laudo – ')+p.name,buildDoc().html);
+        $b('#dPrint').onclick=()=>printDoc(docTitle()+' – '+p.name,buildDoc().html);
       }
     };
     draw();
@@ -1379,6 +1406,39 @@ function laudoDoc(p,{placeId,title,text}){
   const body=`<h1>${esc(t)}</h1>
     <p class="meta">Paciente: ${esc(p.name)}${age!==null?` (${age} anos)`:''}${p.birth?' · Nascimento: '+esc(brDate(p.birth)):''}</p>
     <p style="white-space:pre-wrap">${esc(text)}</p>
+    ${signBlock(`<small>Emitido em ${brDate(todayISO())}</small>`)}`;
+  return{text:L.join('\n'),html:letterheadWrap(pl,body)};
+}
+
+// Rascunho inicial de CID-10 mais comuns nas profissões deste app — ajuste
+// livremente (não é lista oficial completa, só um atalho pra busca). O campo
+// de texto livre no formulário cobre qualquer código fora daqui.
+const CID10_CATALOG=[
+  ['F80.0','Transtorno específico da articulação da fala'],['F80.1','Transtorno expressivo da linguagem'],['F80.2','Transtorno receptivo da linguagem'],
+  ['F84.0','Autismo infantil'],['F90.0','Distúrbio da atividade e da atenção (TDAH)'],['F98.5','Gagueira'],
+  ['H90.3','Perda de audição neurossensorial bilateral'],['H91.9','Perda de audição não especificada'],
+  ['M54.5','Dor lombar baixa'],['M54.2','Cervicalgia'],['M75.1','Síndrome do manguito rotador'],['M77.1','Epicondilite lateral'],
+  ['M25.5','Dor articular'],['M79.1','Mialgia'],['S83.5','Entorse do joelho'],['G56.0','Síndrome do túnel do carpo'],
+  ['F32.0','Episódio depressivo leve'],['F32.1','Episódio depressivo moderado'],['F32.9','Episódio depressivo não especificado'],
+  ['F41.1','Transtorno de ansiedade generalizada'],['F41.0','Transtorno de pânico'],['F43.1','Transtorno de estresse pós-traumático'],
+  ['F43.2','Transtornos de adaptação'],['F51.0','Insônia não orgânica'],['F10.2','Síndrome de dependência do álcool'],
+  ['F84.5','Síndrome de Asperger'],['F70','Retardo mental leve'],['F81.0','Transtorno específico de leitura'],['F81.2','Transtorno específico da habilidade em aritmética'],
+  ['E66.0','Obesidade devida a excesso de calorias'],['E66.9','Obesidade não especificada'],['E86','Depleção de volume (desidratação)'],
+  ['E11','Diabetes mellitus tipo 2'],['E78.0','Hipercolesterolemia pura'],['E44.1','Desnutrição proteico-calórica leve'],
+  ['R63.4','Perda de peso anormal'],['Z71.3','Aconselhamento dietético'],
+  ['Z00.1','Exame de rotina de saúde da criança'],['P07.3','Outros recém-nascidos pré-termo'],['R62.0','Atraso do desenvolvimento'],
+];
+function atestadoDoc(p,{placeId,days,from,activity,cid,extra}){
+  const pl=placeId?place(placeId):null;const dias=+days||0;
+  const periodo=dias?`necessitando de afastamento de ${activity||'suas atividades'} por ${dias} dia${dias===1?'':'s'}, a partir de ${brDate(from||todayISO())}`:`esteve sob meus cuidados profissionais em ${brDate(from||todayISO())}`;
+  const L=['ATESTADO','',`Atesto para os devidos fins que ${p.name}, ${periodo}.`];
+  if(cid)L.push(`CID-10: ${cid}`);
+  if(extra)L.push('',extra);
+  L.push('','',`${S.profile.name}${S.profile.title?' – '+S.profile.title:''}`,`Emitido em ${brDate(todayISO())}`);
+  const body=`<h1>Atestado</h1>
+    <p>Atesto para os devidos fins que <b>${esc(p.name)}</b>, ${esc(periodo)}.</p>
+    ${cid?`<p class="meta">CID-10: ${esc(cid)}</p>`:''}
+    ${extra?`<p style="white-space:pre-wrap">${esc(extra)}</p>`:''}
     ${signBlock(`<small>Emitido em ${brDate(todayISO())}</small>`)}`;
   return{text:L.join('\n'),html:letterheadWrap(pl,body)};
 }
@@ -1670,12 +1730,22 @@ function renderSetPerfil(body){
     <div class="small muted">Conectado como <b>${esc(AUTH.email)}</b>. Suas alterações sincronizam automaticamente entre aparelhos.</div>
     <button class="btn ghost block" id="syncNow">Sincronizar agora</button>
   </div></div>
+  <div class="section"><div class="label">Notificação diária</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <div class="small muted">Um aviso de bom dia (por volta das 7h) com quantos atendimentos você tem hoje — só nos dias em que tiver algo marcado.</div>
+    <label class="toggle"><span>Ativar notificação</span><input type="checkbox" id="pushToggle"></label>
+    <div class="small muted" id="pushHint" hidden></div>
+  </div></div>
   <div class="section"><div class="label">Trocar senha</div><div class="card" data-enter="#pwSave" style="display:flex;flex-direction:column;gap:12px">
     ${pwField('pwCurrent','Senha atual',{autocomplete:'current-password'})}
     ${pwField('pwNew','Nova senha',{placeholder:'Pelo menos 6 caracteres',autocomplete:'new-password'})}
     <button class="btn primary block" id="pwSave">Salvar nova senha</button>
   </div></div>
-  <div class="section" style="margin-bottom:10px"><button class="btn danger block" id="logout">Sair da conta</button></div>`
+  <div class="section"><button class="btn danger block" id="logout">Sair da conta</button></div>
+  <div class="section" style="margin-bottom:10px"><div class="label">Excluir conta</div><div class="card" data-enter="#delAcct" style="display:flex;flex-direction:column;gap:12px">
+    <div class="small muted">Apaga sua conta, pacientes, prontuários e atendimentos pra sempre — na nuvem e neste aparelho. Não dá pra desfazer.</div>
+    ${pwField('delPw','Confirme sua senha',{autocomplete:'current-password'})}
+    <button class="btn danger block" id="delAcct">Excluir minha conta</button>
+  </div></div>`
   :`<div class="section" style="margin-bottom:10px"><div class="empty"><b>Sem conta na nuvem</b>Você está usando o app sem sincronização. Crie uma conta para trocar de aparelho sem perder dados.</div></div>`}`;
   $('#sName').onchange=e=>{S.profile.name=e.target.value.trim()||S.profile.name;save();toast('Nome salvo');if(AUTH)apiFetch('/auth/me',{method:'PUT',body:JSON.stringify({name:S.profile.name})}).catch(()=>{})};
   $('#sTitle').onchange=e=>{S.profile.title=e.target.value.trim();save();toast('Profissão salva');if(AUTH)apiFetch('/auth/me',{method:'PUT',body:JSON.stringify({title:S.profile.title})}).catch(()=>{})};
@@ -1704,6 +1774,27 @@ function renderSetPerfil(body){
     apiFetch('/auth/me').then(me=>{paint(!!me.emailVerified);save()}).catch(()=>{});
     btn.onclick=async()=>{btn.disabled=true;try{const r=await apiFetch('/auth/verify',{method:'POST'});toast(r.alreadyVerified?'Esse e-mail já estava confirmado':'E-mail de confirmação reenviado')}catch(e){toast('Não consegui reenviar agora')}btn.disabled=false};
     $('#syncNow').onclick=async()=>{toast('Sincronizando…');try{await pushAll();toast('Sincronizado')}catch(e){toast('Não consegui sincronizar agora')}};
+    (async()=>{
+      const pt=$('#pushToggle'),hint=$('#pushHint');
+      const showHint=msg=>{hint.hidden=!msg;hint.textContent=msg||''};
+      if(!('serviceWorker' in navigator)||!('PushManager' in window)){pt.disabled=true;showHint('Esse navegador não suporta notificação push.');return}
+      try{
+        const reg=await navigator.serviceWorker.ready;
+        const sub=await reg.pushManager.getSubscription();
+        pt.checked=!!sub;
+      }catch(e){}
+      pt.onchange=async()=>{
+        pt.disabled=true;
+        try{
+          if(pt.checked){await enablePush();toast('Notificação diária ativada')}
+          else{await disablePush();toast('Notificação diária desativada')}
+        }catch(e){
+          pt.checked=!pt.checked;
+          showHint(e.message==='denied'?'Permissão de notificação negada — ative nas configurações do navegador/aparelho.':'Não consegui ativar agora. Tente de novo.');
+        }
+        pt.disabled=false;
+      };
+    })();
     wireEye('pwCurrent');wireEye('pwNew');
     $('#pwSave').onclick=async()=>{
       const cur=$('#pwCurrent').value,nw=$('#pwNew').value;
@@ -1718,6 +1809,19 @@ function renderSetPerfil(body){
       clearAuth();
       try{localStorage.removeItem(KEY)}catch(e){}
       location.reload();
+    });
+    wireEye('delPw');
+    const delBtn=$('#delAcct');
+    if(delBtn)twoTap(delBtn,'Excluir minha conta','Toque de novo pra confirmar — isso não tem volta',async()=>{
+      const pw=$('#delPw').value;
+      if(!pw){toast('Digite sua senha pra confirmar');return}
+      delBtn.disabled=true;
+      try{
+        await apiFetch('/auth/me',{method:'DELETE',body:JSON.stringify({password:pw})});
+        clearAuth();
+        try{localStorage.removeItem(KEY)}catch(e){}
+        location.reload();
+      }catch(e){delBtn.disabled=false;toast(e.body&&e.body.error==='wrong_password'?'Senha incorreta':'Não consegui excluir a conta agora')}
     });
   }
 }
@@ -1850,8 +1954,37 @@ function editPlace(id){
   });
 }
 
+// Chave pública VAPID (não é segredo — a privada fica só no servidor).
+// Precisa bater com VAPID_PRIVATE_KEY configurada na API.
+const VAPID_PUBLIC_KEY='BGA54CzIeSKKdnvOTfYU1ad7uFPvL9ZIuvXbZLL4_kpXNuf8Y9prPdmIs_aJ7rU1cK3Ti3YqBmo1Ao_5zKjqKE4';
+function urlBase64ToUint8Array(base64){
+  const padding='='.repeat((4-base64.length%4)%4);
+  const base64Safe=(base64+padding).replace(/-/g,'+').replace(/_/g,'/');
+  const raw=atob(base64Safe);
+  return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
+}
+async function enablePush(){
+  if(!('serviceWorker' in navigator)||!('PushManager' in window))throw new Error('unsupported');
+  const perm=await Notification.requestPermission();
+  if(perm!=='granted')throw new Error('denied');
+  const reg=await navigator.serviceWorker.ready;
+  const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(VAPID_PUBLIC_KEY)});
+  const json=sub.toJSON();
+  await apiFetch('/auth/me?action=push-subscribe',{method:'PUT',body:JSON.stringify({endpoint:json.endpoint,keys:json.keys})});
+}
+async function disablePush(){
+  if(!('serviceWorker' in navigator))return;
+  const reg=await navigator.serviceWorker.ready;
+  const sub=await reg.pushManager.getSubscription();
+  if(!sub)return;
+  await sub.unsubscribe();
+  await apiFetch('/auth/me?action=push-unsubscribe',{method:'DELETE',body:JSON.stringify({endpoint:sub.endpoint})}).catch(()=>{});
+}
+
 render();
-if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
+// localhost conta como contexto seguro mesmo em http — deixa testar push em
+// dev local, não só depois de publicado (só https funcionava antes).
+if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('sw.js').catch(()=>{});
 })();
 </script>
 

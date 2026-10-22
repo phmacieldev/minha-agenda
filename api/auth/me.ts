@@ -27,6 +27,11 @@ const passwordSchema = z.object({
   newPassword: z.string().trim().min(6, 'Senha precisa ter pelo menos 6 caracteres'),
 });
 
+const pushSubSchema = z.object({
+  endpoint: z.string().url(),
+  keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }),
+});
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const auth = getAuth(req);
@@ -66,6 +71,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ ok: true });
       }
 
+      // Registrar inscrição de notificação push deste aparelho.
+      if (req.query.action === 'push-subscribe') {
+        const parsed = pushSubSchema.safeParse(req.body);
+        if (!parsed.success) return res.status(400).json({ error: 'invalid_input' });
+        const { endpoint, keys } = parsed.data;
+        await pool.query(
+          `insert into push_subscriptions (user_id, endpoint, p256dh, auth)
+           values ($1,$2,$3,$4)
+           on conflict (endpoint) do update set user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth`,
+          [auth.userId, endpoint, keys.p256dh, keys.auth]
+        );
+        return res.status(200).json({ ok: true });
+      }
+
       // Atualizar perfil (nome / profissão)
       const parsed = profileSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -90,7 +109,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(userToMe(result.rows[0]));
     }
 
-    res.setHeader('Allow', 'GET, PUT, PATCH');
+    if (req.method === 'DELETE' && req.query.action === 'push-unsubscribe') {
+      const endpoint = typeof req.body?.endpoint === 'string' ? req.body.endpoint : null;
+      if (!endpoint) return res.status(400).json({ error: 'invalid_input' });
+      await pool.query('delete from push_subscriptions where endpoint = $1 and user_id = $2', [endpoint, auth.userId]);
+      return res.status(204).end();
+    }
+
+    if (req.method === 'DELETE') {
+      // Exige a senha de novo (como na troca de senha) pra um token sozinho
+      // (ex. roubado de um aparelho destravado) não bastar pra apagar a conta.
+      const parsed = z.object({ password: z.string().min(1) }).safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: 'invalid_input' });
+      const result = await pool.query('select password_hash from users where id = $1', [auth.userId]);
+      if (!result.rowCount) return res.status(404).json({ error: 'not_found' });
+      const ok = await bcrypt.compare(parsed.data.password, result.rows[0].password_hash);
+      if (!ok) return res.status(401).json({ error: 'wrong_password' });
+      // on delete cascade nas FKs já cuida de places/patients/appts/records/etc.
+      await pool.query('delete from users where id = $1', [auth.userId]);
+      return res.status(204).end();
+    }
+
+    res.setHeader('Allow', 'GET, PUT, PATCH, DELETE');
     res.status(405).json({ error: 'method_not_allowed' });
   } catch (err) {
     if (err instanceof UnauthorizedError) return res.status(401).json({ error: 'unauthorized' });
