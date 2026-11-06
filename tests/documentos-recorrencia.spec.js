@@ -8,16 +8,27 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('recorrência com 2 dias da semana, só nesta semana', async ({ page }) => {
+  // Base fixa numa segunda-feira futura (não "hoje") — marcar um segundo dia
+  // da mesma semana só funciona se esse dia ainda não tiver passado; usar uma
+  // segunda como base garante que terça a domingo da mesma semana sempre
+  // estão à frente, então o teste não depende de em que dia da semana roda.
+  const d = new Date();
+  const diasAteSegunda = ((1 + 7 - d.getDay()) % 7) || 7;
+  d.setDate(d.getDate() + diasAteSegunda + 7);
+  const pad = (n) => String(n).padStart(2, '0');
+  const iso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
   await page.locator('#fab').click();
   await page.locator('#fName').fill('Paciente QA Dois Dias');
   await page.locator('#fPlace button').nth(2).click(); // Particular
+  await page.locator('#fDate').fill(iso);
   await page.locator('#fTime').fill('09:00');
   await page.locator('#fPay button', { hasText: 'Particular' }).click();
 
   await page.locator('#fFreq').selectOption('7'); // toda semana
   await page.locator('#fCount').selectOption('1'); // só desta vez
-  // o dia da data escolhida já vem marcado; marca mais um
-  await page.locator('#fWd button', { hasText: 'Sex' }).click();
+  // a segunda (dia da data escolhida) já vem marcada; marca a quinta também
+  await page.locator('#fWd button', { hasText: 'Qui' }).click();
 
   await page.locator('#fSave').click();
   await expect(page.getByText('Atendimento agendado')).toBeVisible();

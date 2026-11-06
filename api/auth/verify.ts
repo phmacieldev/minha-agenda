@@ -70,7 +70,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const resetUrl = `${appUrl}/?reset=${resetToken}`;
         await sendEmail({
           to: user.email,
-          subject: 'Redefinir senha — Minha Agenda',
+          subject: 'Redefinir senha — MyDay',
           html: resetPasswordEmailHtml(user.name, resetUrl),
         });
       }
@@ -117,7 +117,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const verifyUrl = `${appUrl}/api/auth/verify?token=${verificationToken}`;
       await sendEmail({
         to: user.email,
-        subject: 'Confirme seu e-mail — Minha Agenda',
+        subject: 'Confirme seu e-mail — MyDay',
         html: verificationEmailHtml(user.name, verifyUrl),
       });
       return res.status(200).json({ sent: true });

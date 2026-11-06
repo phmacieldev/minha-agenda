@@ -46,7 +46,7 @@ async function runDigest(pool: ReturnType<typeof getPool>) {
     const body = n === 1 ? 'Você tem 1 atendimento hoje.' : `Você tem ${n} atendimentos hoje.`;
     let anySent = false;
     for (const sub of subscriptions) {
-      if (await sendPush(pool, sub, { title: 'Minha Agenda', body, url: '/' })) {
+      if (await sendPush(pool, sub, { title: 'MyDay', body, url: '/' })) {
         pushesSent++;
         anySent = true;
       }

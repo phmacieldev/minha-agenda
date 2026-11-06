@@ -1,4 +1,4 @@
-# Minha Agenda
+# MyDay
 
 PWA de agenda de atendimentos para profissionais de saúde (fonoaudiologia, fisioterapia, psicologia etc.) que atendem em clínicas e/ou particular. Front é HTML + CSS + JS puro, sem build — tudo em `index.html`. Tem uma API própria em TypeScript (Vercel Serverless Functions) com Postgres, pra sincronizar entre aparelhos sem depender só do navegador.
 

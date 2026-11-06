@@ -50,7 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     await sendEmail({
       to: user.email,
-      subject: 'Confirme seu e-mail — Minha Agenda',
+      subject: 'Confirme seu e-mail — MyDay',
       html: verificationEmailHtml(name, verifyUrl),
     });
   } catch (err) {
