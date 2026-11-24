@@ -3,6 +3,8 @@ const { test, expect } = require('@playwright/test');
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  // Dispensa o aviso de "em desenvolvimento" antes de interagir com a tela
+  await page.getByRole('button', { name: 'Entendi' }).click();
   await page.getByRole('button', { name: 'Ver com exemplos primeiro' }).click();
   await expect(page.getByText('Você está vendo exemplos')).toBeVisible();
 });

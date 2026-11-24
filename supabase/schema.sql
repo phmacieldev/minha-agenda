@@ -30,6 +30,18 @@ alter table users add column if not exists signature text; -- imagem (data URL) 
 alter table users add column if not exists reset_token text;
 alter table users add column if not exists reset_token_expires_at timestamptz;
 
+-- Acesso pago: contas são criadas pela conta admin (não há mais cadastro
+-- público), com senha padrão e prazo de acesso definido por ela.
+-- role 'admin' só a conta da própria dona do app; o resto é 'client'.
+-- access_type 'unlimited' ignora access_until (fica null); 'monthly'/'annual'
+-- são só um rótulo pra organizar — o que vale pra expiração é access_until,
+-- que a conta admin ajusta na hora de criar ou renovar o acesso.
+alter table users add column if not exists role text not null default 'client';
+alter table users add column if not exists access_type text not null default 'monthly';
+alter table users add column if not exists access_until timestamptz;
+-- Força a troca da senha padrão no primeiro acesso de uma conta criada pela admin.
+alter table users add column if not exists must_change_password boolean not null default false;
+
 -- Limitador de tentativas (login, cadastro, recuperação de senha) — ver lib/rateLimit.ts.
 create table if not exists rate_limits (
   key text primary key,

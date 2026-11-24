@@ -10,6 +10,9 @@ test('fluxo básico: exemplos, agendar com convênio novo, editar horário, rela
 
   await page.goto('/');
 
+  // Dispensa o aviso de "em desenvolvimento" antes de interagir com a tela
+  await page.getByRole('button', { name: 'Entendi' }).click();
+
   // Onboarding: usar dados de exemplo
   await page.getByRole('button', { name: 'Ver com exemplos primeiro' }).click();
   await expect(page.getByText('Você está vendo exemplos')).toBeVisible();

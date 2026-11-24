@@ -34,7 +34,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!okIp || !okEmail) return res.status(429).json({ error: 'too_many_attempts' });
 
   const result = await pool.query(
-    'select id, email, password_hash, name, title, reg_number, signature, email_verified_at from users where email = $1',
+    `select id, email, password_hash, name, title, reg_number, signature, email_verified_at,
+            role, access_type, access_until, must_change_password
+     from users where email = $1`,
     [normalizedEmail]
   );
   const user = result.rows[0];
@@ -46,6 +48,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ok = await bcrypt.compare(password, user?.password_hash ?? DUMMY_HASH);
   if (!user || !ok) {
     return res.status(401).json({ error: 'invalid_credentials' });
+  }
+
+  // Contas 'client' têm prazo de acesso definido pela conta admin; vencido o
+  // prazo, bloqueia o login (admin e contas 'unlimited' nunca vencem).
+  if (user.role !== 'admin' && user.access_type !== 'unlimited') {
+    if (user.access_until && new Date(user.access_until) < new Date()) {
+      return res.status(403).json({ error: 'access_expired' });
+    }
   }
 
   const token = signToken({ userId: user.id, email: user.email });

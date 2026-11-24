@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { getAuth, UnauthorizedError } from '../../lib/auth';
 import { getPool } from '../../lib/db';
-import { userToMe } from '../../lib/mappers';
+import { userToMe, adminUserToJson } from '../../lib/mappers';
 import { loadResources } from '../../lib/bootstrap';
 import { sendJson } from '../../lib/respond';
 
@@ -32,14 +32,37 @@ const pushSubSchema = z.object({
   keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }),
 });
 
+const adminCreateUpdateSchema = z.object({
+  userId: z.string().uuid(),
+  accessType: z.enum(['monthly', 'annual', 'unlimited']),
+  accessUntil: z.string().datetime().optional(),
+});
+
+async function requireAdmin(pool: ReturnType<typeof getPool>, userId: string) {
+  const r = await pool.query('select role from users where id = $1', [userId]);
+  if (r.rows[0]?.role !== 'admin') throw new UnauthorizedError('forbidden');
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const auth = getAuth(req);
     const pool = getPool();
 
+    // Painel admin: lista as contas de clientes (ver PLANO de acesso pago).
+    // Reaproveita este arquivo em vez de uma function nova (limite de 12 no Hobby).
+    if (req.method === 'GET' && req.query.action === 'admin-list') {
+      await requireAdmin(pool, auth.userId);
+      const result = await pool.query(
+        `select * from users where role <> 'admin' order by created_at desc`
+      );
+      return res.status(200).json(result.rows.map(adminUserToJson));
+    }
+
     if (req.method === 'GET') {
       const result = await pool.query(
-        'select id, email, name, title, reg_number, signature, email_verified_at from users where id = $1',
+        `select id, email, name, title, reg_number, signature, email_verified_at,
+                role, access_type, access_until, must_change_password
+         from users where id = $1`,
         [auth.userId]
       );
       if (!result.rowCount) return res.status(404).json({ error: 'not_found' });
@@ -67,8 +90,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const ok = await bcrypt.compare(currentPassword, result.rows[0].password_hash);
         if (!ok) return res.status(401).json({ error: 'wrong_password' });
         const newHash = await bcrypt.hash(newPassword, 10);
-        await pool.query('update users set password_hash = $1 where id = $2', [newHash, auth.userId]);
+        await pool.query(
+          'update users set password_hash = $1, must_change_password = false where id = $2',
+          [newHash, auth.userId]
+        );
         return res.status(200).json({ ok: true });
+      }
+
+      // Admin ajusta o prazo/tipo de acesso de uma conta de cliente.
+      if (req.query.action === 'admin-update') {
+        await requireAdmin(pool, auth.userId);
+        const parsed = adminCreateUpdateSchema.safeParse(req.body);
+        if (!parsed.success) return res.status(400).json({ error: 'invalid_input', details: parsed.error.flatten() });
+        const { userId, accessType, accessUntil } = parsed.data;
+        if (accessType !== 'unlimited' && !accessUntil) {
+          return res.status(400).json({ error: 'invalid_input', message: 'accessUntil é obrigatório para esse tipo de acesso' });
+        }
+        const result = await pool.query(
+          `update users set access_type = $1, access_until = $2
+           where id = $3 and role <> 'admin' returning *`,
+          [accessType, accessType === 'unlimited' ? null : accessUntil, userId]
+        );
+        if (!result.rowCount) return res.status(404).json({ error: 'not_found' });
+        return res.status(200).json(adminUserToJson(result.rows[0]));
       }
 
       // Registrar inscrição de notificação push deste aparelho.
@@ -103,7 +147,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!fields.length) return res.status(400).json({ error: 'bad_request', message: 'Nenhum campo para atualizar' });
       values.push(auth.userId);
       const result = await pool.query(
-        `update users set ${fields.join(', ')} where id = $${i} returning id, email, name, title, reg_number, signature, email_verified_at`,
+        `update users set ${fields.join(', ')} where id = $${i}
+         returning id, email, name, title, reg_number, signature, email_verified_at,
+                   role, access_type, access_until, must_change_password`,
         values
       );
       return res.status(200).json(userToMe(result.rows[0]));
@@ -113,6 +159,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const endpoint = typeof req.body?.endpoint === 'string' ? req.body.endpoint : null;
       if (!endpoint) return res.status(400).json({ error: 'invalid_input' });
       await pool.query('delete from push_subscriptions where endpoint = $1 and user_id = $2', [endpoint, auth.userId]);
+      return res.status(204).end();
+    }
+
+    // Admin remove uma conta de cliente (cancelamento/engano na criação).
+    if (req.method === 'DELETE' && req.query.action === 'admin-delete') {
+      await requireAdmin(pool, auth.userId);
+      const userId = typeof req.query.userId === 'string' ? req.query.userId : null;
+      if (!userId) return res.status(400).json({ error: 'invalid_input' });
+      await pool.query(`delete from users where id = $1 and role <> 'admin'`, [userId]);
       return res.status(204).end();
     }
 
