@@ -777,6 +777,7 @@ function onboarding(){
       <button class="btn primary block" id="liGo">Entrar</button>
       <button class="link" id="liForgot" type="button" style="align-self:center">Esqueci minha senha</button>
       <button class="btn ghost block" id="obDemo">Ver com exemplos primeiro</button>
+      <a class="link" id="obContact" href="#" style="align-self:center;text-decoration:none">Ainda não tem conta? Entre em contato</a>
     </div>`;
     $('#liEmail').oninput=e=>liEmail=e.target.value;$('#liPassword').oninput=e=>liPassword=e.target.value;
     $('#liEmail').value=liEmail;$('#liPassword').value=liPassword;
@@ -805,6 +806,12 @@ function onboarding(){
       btn.disabled=false;
     };
     $('#obDemo').onclick=()=>{S=demo();save();go('agenda');toast('Exemplos carregados. Apague em Ajustes quando quiser.')};
+    $('#obContact').onclick=e=>{
+      e.preventDefault();
+      const subject='Quero usar o MyDay';
+      const body='Olá! Vi o MyDay e gostaria de criar uma conta.\n\nMeu nome: \nMinha profissão: ';
+      location.href='mailto:phmsfaria@gmail.com?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+    };
   };
   draw();
   devNoticePopup();
