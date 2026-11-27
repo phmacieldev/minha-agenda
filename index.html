@@ -1988,5 +1988,10 @@ if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostnam
 })();
 </script>
 
+<script type="module">
+import { inject } from '/@vercel/analytics';
+inject();
+</script>
+
 </body>
 </html>
