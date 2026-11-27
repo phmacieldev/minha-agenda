@@ -2,10 +2,21 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { randomUUID } from 'crypto';
 import { getPool } from '../../lib/db';
 import { sendPush } from '../../lib/push';
+import { logEvent } from '../../lib/adminLog';
+import { getAuth, UnauthorizedError } from '../../lib/auth';
 
-// Quantas cópias diárias ficam guardadas (o Hobby da Vercel só permite 1x/dia,
-// então 14 cobre umas duas semanas sem o banco crescer sem limite).
-const KEEP = 14;
+async function requireAdmin(pool: ReturnType<typeof getPool>, req: VercelRequest): Promise<string> {
+  const auth = getAuth(req);
+  const r = await pool.query('select role from users where id = $1', [auth.userId]);
+  if (r.rows[0]?.role !== 'admin') throw new UnauthorizedError('forbidden');
+  return auth.userId;
+}
+
+// Quantas cópias semanais ficam guardadas — toda sexta às 22h (01h UTC de
+// sábado, ver vercel.json). 8 cobre cerca de 2 meses de histórico sem o
+// banco crescer sem limite; a cada novo backup, o mais antigo além desse
+// número é apagado.
+const KEEP = 8;
 const TABLES = ['users', 'places', 'insurers', 'patients', 'records', 'appts', 'exceptions'] as const;
 
 async function runBackup(pool: ReturnType<typeof getPool>) {
@@ -46,7 +57,7 @@ async function runDigest(pool: ReturnType<typeof getPool>) {
     const body = n === 1 ? 'Você tem 1 atendimento hoje.' : `Você tem ${n} atendimentos hoje.`;
     let anySent = false;
     for (const sub of subscriptions) {
-      if (await sendPush(pool, sub, { title: 'Minha Agenda', body, url: '/' })) {
+      if (await sendPush(pool, sub, { title: 'MyDay', body, url: '/' })) {
         pushesSent++;
         anySent = true;
       }
@@ -57,13 +68,47 @@ async function runDigest(pool: ReturnType<typeof getPool>) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // A Vercel Cron chama com esse header; fora disso, exige o segredo (se configurado)
-  // pra não deixar qualquer um disparar um dump do banco (ou um spam de push)
-  // só sabendo a URL.
+  const pool = getPool();
+
+  // Painel admin: lista os backups guardados (pra escolher qual baixar) ou
+  // baixa um deles como arquivo .json. Reaproveita este arquivo em vez de
+  // criar rotas novas — o plano Hobby da Vercel já está no limite de 12.
+  if (req.method === 'GET' && (req.query.action === 'list' || req.query.action === 'download')) {
+    try {
+      await requireAdmin(pool, req);
+    } catch (err) {
+      if (err instanceof UnauthorizedError) return res.status(401).json({ error: 'unauthorized' });
+      throw err;
+    }
+    if (req.query.action === 'list') {
+      const result = await pool.query(
+        `select id, created_at, pg_column_size(data) as size_bytes from backups order by created_at desc limit 20`
+      );
+      return res.status(200).json(result.rows.map((r) => ({ id: r.id, createdAt: r.created_at, sizeBytes: r.size_bytes })));
+    }
+    const id = typeof req.query.id === 'string' ? req.query.id : null;
+    if (!id) return res.status(400).json({ error: 'invalid_input' });
+    const result = await pool.query('select data, created_at from backups where id = $1', [id]);
+    if (!result.rowCount) return res.status(404).json({ error: 'not_found' });
+    const filename = `myday-backup-${new Date(result.rows[0].created_at).toISOString().slice(0, 10)}.json`;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.status(200).send(JSON.stringify(result.rows[0].data));
+  }
+
+  // A Vercel Cron chama com esse header; fora disso, aceita o segredo (se
+  // configurado) ou uma conta admin logada (botão de "rodar agora" no
+  // painel) — pra não deixar qualquer um disparar um dump do banco (ou um
+  // spam de push) só sabendo a URL.
   const isVercelCron = req.headers['x-vercel-cron'] != null;
-  if (!isVercelCron && process.env.CRON_SECRET) {
-    if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
-      return res.status(401).json({ error: 'unauthorized' });
+  if (!isVercelCron && process.env.CRON_SECRET && req.headers.authorization === `Bearer ${process.env.CRON_SECRET}`) {
+    // segredo de cron bate — segue
+  } else if (!isVercelCron) {
+    try {
+      await requireAdmin(pool, req);
+    } catch (err) {
+      if (err instanceof UnauthorizedError) return res.status(401).json({ error: 'unauthorized' });
+      throw err;
     }
   }
 
@@ -73,13 +118,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Vercel é isolado por invocação, mas mesmo assim vale responder 500 e
   // logar, em vez de deixar vazar uma rejeição não tratada.
   try {
-    const pool = getPool();
     // Reaproveita este arquivo pros dois cron jobs em vez de criar uma rota
     // nova — o plano Hobby da Vercel já está no limite de 12 functions.
-    const result = req.query.job === 'digest' ? await runDigest(pool) : await runBackup(pool);
+    const job = req.query.job === 'digest' ? 'digest' : 'backup';
+    const result = job === 'digest' ? await runDigest(pool) : await runBackup(pool);
+    logEvent(pool, { event: `cron_${job}_ok`, message: JSON.stringify(result) });
     res.status(200).json(result);
   } catch (err) {
-    console.error('[cron/backup] falhou', req.query.job === 'digest' ? 'digest' : 'backup', err);
+    const job = req.query.job === 'digest' ? 'digest' : 'backup';
+    console.error('[cron/backup] falhou', job, err);
+    logEvent(getPool(), { level: 'error', event: `cron_${job}_failed`, message: err instanceof Error ? err.message : String(err) });
     res.status(500).json({ error: 'cron_failed' });
   }
 }

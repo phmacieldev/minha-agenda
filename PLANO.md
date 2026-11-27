@@ -1,4 +1,4 @@
-# Plano: sincronização na nuvem para o Minha Agenda
+# Plano: sincronização na nuvem para o MyDay (na época, "Minha Agenda")
 
 > Documento de planejamento histórico (decidido e implementado desde então — ver `## Arquitetura` no [README](README.md) pro estado atual). Uma decisão divergiu do que está escrito aqui: em vez de Supabase Auth + RLS, a API faz a própria autenticação e isolamento por `user_id` (Supabase ficou só como Postgres gerenciado) — simplificou não depender de outra camada de autorização. As pendências da seção 6 (política de retenção, texto de consentimento) continuam em aberto.
 

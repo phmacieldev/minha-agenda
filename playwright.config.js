@@ -3,6 +3,10 @@ const { defineConfig, devices } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: './tests',
+  // Sem isso, o glob padrão do Playwright também pega os *.test.ts do vitest
+  // (tests/unit, tests/integration) e tenta rodá-los como se fossem specs
+  // dele — dá erro de ESM/CJS porque não é o runtime certo pra esses arquivos.
+  testMatch: '**/*.spec.js',
   fullyParallel: true,
   reporter: 'list',
   use: {

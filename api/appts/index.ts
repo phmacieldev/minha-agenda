@@ -84,6 +84,7 @@ export default withAuth(async (req: VercelRequest, res: VercelResponse, auth) =>
          returning *`,
         [id, auth.userId, a.patientId, a.placeId, a.date, a.time, a.dur, a.price, a.pay, a.insurerId ?? null, a.insName ?? null, a.status, a.paid, a.notes, a.seriesId ?? null]
       );
+      if (!result.rowCount) throw new BadRequestError('id já em uso por outra conta');
       return res.status(201).json(apptToJson(result.rows[0]));
     }
     res.setHeader('Allow', 'GET, POST');

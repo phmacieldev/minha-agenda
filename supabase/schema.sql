@@ -30,6 +30,36 @@ alter table users add column if not exists signature text; -- imagem (data URL) 
 alter table users add column if not exists reset_token text;
 alter table users add column if not exists reset_token_expires_at timestamptz;
 
+-- Acesso pago: contas são criadas pela conta admin (não há mais cadastro
+-- público), com senha padrão e prazo de acesso definido por ela.
+-- role 'admin' só a conta da própria dona do app; o resto é 'client'.
+-- access_type 'unlimited' ignora access_until (fica null); 'monthly'/'annual'
+-- são só um rótulo pra organizar — o que vale pra expiração é access_until,
+-- que a conta admin ajusta na hora de criar ou renovar o acesso.
+alter table users add column if not exists role text not null default 'client';
+alter table users add column if not exists access_type text not null default 'monthly';
+alter table users add column if not exists access_until timestamptz;
+-- Força a troca da senha padrão no primeiro acesso de uma conta criada pela admin.
+alter table users add column if not exists must_change_password boolean not null default false;
+
+-- Última vez que a conta foi vista ativa no app (atualizado a cada GET
+-- /auth/me) — dá pra estimar atividade/"online agora" sem precisar de
+-- infraestrutura de presença em tempo real.
+alter table users add column if not exists last_seen_at timestamptz;
+
+-- Log de eventos pro painel admin (login, erro, criação de conta...) — pensado
+-- pra "o que está acontecendo" sem precisar olhar logs de servidor/Vercel.
+create table if not exists admin_logs (
+  id uuid primary key default gen_random_uuid(),
+  level text not null default 'info',
+  event text not null,
+  user_id uuid references users(id) on delete set null,
+  email text,
+  message text,
+  created_at timestamptz not null default now()
+);
+create index if not exists admin_logs_created_at_idx on admin_logs(created_at desc);
+
 -- Limitador de tentativas (login, cadastro, recuperação de senha) — ver lib/rateLimit.ts.
 create table if not exists rate_limits (
   key text primary key,

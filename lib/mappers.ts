@@ -94,5 +94,24 @@ export function userToMe(row: any) {
     regNumber: row.reg_number,
     signature: row.signature,
     emailVerified: Boolean(row.email_verified_at),
+    role: row.role,
+    accessType: row.access_type,
+    accessUntil: row.access_until,
+    mustChangePassword: Boolean(row.must_change_password),
+  };
+}
+
+export function adminUserToJson(row: any) {
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    title: row.title,
+    role: row.role,
+    accessType: row.access_type,
+    accessUntil: row.access_until,
+    mustChangePassword: Boolean(row.must_change_password),
+    createdAt: row.created_at,
+    lastSeenAt: row.last_seen_at,
   };
 }

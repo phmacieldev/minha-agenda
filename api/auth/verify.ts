@@ -6,6 +6,7 @@ import { getAuth, UnauthorizedError } from '../../lib/auth';
 import { generateToken, hoursFromNow } from '../../lib/tokens';
 import { sendEmail, verificationEmailHtml, resetPasswordEmailHtml } from '../../lib/email';
 import { checkRateLimit, clientIp } from '../../lib/rateLimit';
+import { withErrorLog } from '../../lib/withErrorLog';
 
 const forgotSchema = z.object({ email: z.string().email() });
 const resetSchema = z.object({
@@ -22,7 +23,7 @@ function resultPage(title: string, message: string): string {
     <body><h1>${title}</h1><p>${message}</p></body></html>`;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req: VercelRequest, res: VercelResponse) {
   const pool = getPool();
 
   // Confirma o e-mail a partir do link enviado (clicado no navegador).
@@ -70,7 +71,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const resetUrl = `${appUrl}/?reset=${resetToken}`;
         await sendEmail({
           to: user.email,
-          subject: 'Redefinir senha — Minha Agenda',
+          subject: 'Redefinir senha — MyDay',
           html: resetPasswordEmailHtml(user.name, resetUrl),
         });
       }
@@ -117,7 +118,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const verifyUrl = `${appUrl}/api/auth/verify?token=${verificationToken}`;
       await sendEmail({
         to: user.email,
-        subject: 'Confirme seu e-mail — Minha Agenda',
+        subject: 'Confirme seu e-mail — MyDay',
         html: verificationEmailHtml(user.name, verifyUrl),
       });
       return res.status(200).json({ sent: true });
@@ -130,3 +131,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Allow', 'GET, POST');
   res.status(405).json({ error: 'method_not_allowed' });
 }
+
+export default withErrorLog(handler);

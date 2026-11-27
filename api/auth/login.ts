@@ -7,13 +7,15 @@ import { userToMe } from '../../lib/mappers';
 import { loadResources } from '../../lib/bootstrap';
 import { sendJson } from '../../lib/respond';
 import { checkRateLimit, clientIp } from '../../lib/rateLimit';
+import { logEvent } from '../../lib/adminLog';
+import { withErrorLog } from '../../lib/withErrorLog';
 
 const schema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
 
   const parsed = schema.safeParse(req.body);
@@ -34,7 +36,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!okIp || !okEmail) return res.status(429).json({ error: 'too_many_attempts' });
 
   const result = await pool.query(
-    'select id, email, password_hash, name, title, reg_number, signature, email_verified_at from users where email = $1',
+    `select id, email, password_hash, name, title, reg_number, signature, email_verified_at,
+            role, access_type, access_until, must_change_password
+     from users where email = $1`,
     [normalizedEmail]
   );
   const user = result.rows[0];
@@ -45,9 +49,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const DUMMY_HASH = '$2a$10$CwTycUXWue0Thq9StjUM0uJ8y2M9VX9f6V7z0g5l4R0w1XqS6Z2Nq';
   const ok = await bcrypt.compare(password, user?.password_hash ?? DUMMY_HASH);
   if (!user || !ok) {
+    logEvent(pool, { level: 'warn', event: 'login_failed', email: normalizedEmail });
     return res.status(401).json({ error: 'invalid_credentials' });
   }
 
+  // Contas 'client' têm prazo de acesso definido pela conta admin; vencido o
+  // prazo, bloqueia o login (admin e contas 'unlimited' nunca vencem).
+  if (user.role !== 'admin' && user.access_type !== 'unlimited') {
+    if (user.access_until && new Date(user.access_until) < new Date()) {
+      logEvent(pool, { level: 'warn', event: 'access_expired', userId: user.id, email: user.email });
+      return res.status(403).json({ error: 'access_expired' });
+    }
+  }
+
+  logEvent(pool, { event: 'login_success', userId: user.id, email: user.email });
+  pool.query('update users set last_seen_at = now() where id = $1', [user.id]).catch(() => {});
   const token = signToken({ userId: user.id, email: user.email });
 
   // ?full=1: devolve o perfil e todos os recursos junto com o token, numa
@@ -58,3 +74,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   res.status(200).json({ token });
 }
+
+export default withErrorLog(handler);

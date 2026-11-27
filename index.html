@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Minha Agenda</title>
+<title>MyDay</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -74,7 +74,12 @@ h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.
 .chipbtn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 14px;font-size:14px;font-weight:600}
 
 /* Week strip */
-.week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px}
+.weekwrap{overflow:hidden;margin-bottom:6px}
+.weektrack{display:flex;touch-action:pan-y;user-select:none}
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;flex:0 0 100%;min-width:0}
+.daywrap{overflow:hidden}
+.daytrack{display:flex;align-items:flex-start;touch-action:pan-y;user-select:none}
+.daypane{flex:0 0 100%;min-width:0}
 .day{border:0;background:transparent;border-radius:14px;padding:8px 0 10px;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative}
 .day .dw{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
 .day .dn{font-family:var(--display);font-size:20px;font-weight:700}
@@ -89,7 +94,7 @@ h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.
 .weeknav .btns{display:flex;gap:6px}
 
 /* Day header */
-.dayhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:16px 0 10px;flex-wrap:wrap}
+.dayhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:16px 0 10px;flex-wrap:wrap;touch-action:pan-y}
 .dayhead h2{font-size:22px}
 
 /* Timeline */
@@ -152,6 +157,8 @@ body.has-demobar .wrap{padding-top:calc(env(safe-area-inset-top,0px) + 58px)}
 .fab svg{width:22px;height:22px}
 
 /* Sheet */
+body.sheet-locked{overflow:hidden}
+body.sheet-locked .wrap,body.sheet-locked .tabs,body.sheet-locked .fab{pointer-events:none}
 .scrim{position:fixed;inset:0;background:rgba(10,8,20,.45);z-index:40;opacity:0;transition:opacity .2s}
 .scrim.show{opacity:1}
 .sheet{position:fixed;left:0;right:0;bottom:0;z-index:41;max-height:92%;display:flex;flex-direction:column;background:var(--bg);border-radius:22px 22px 0 0;transform:translateY(100%);transition:transform .25s cubic-bezier(.2,.8,.2,1);max-width:640px;margin:0 auto}
@@ -356,6 +363,8 @@ const WD=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const WDL=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
 const WD_SHORT=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const MES=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+// "2026-06" -> "jun" — pros gráficos de mês a mês (receita, crescimento de contas).
+const monthAbbr=ym=>MES[(+ym.slice(5,7))-1].slice(0,3);
 const STATUS={agendado:'Agendado',confirmado:'Confirmado',concluido:'Atendido',faltou:'Faltou',cancelado:'Cancelado'};
 const DEFAULT_MSG='Olá, {paciente}! Passando para confirmar seu atendimento {dia} às {hora} em {local}. Posso confirmar?';
 
@@ -460,7 +469,7 @@ function applyIcon(){
   replaceLink('appleIcon',{rel:'apple-touch-icon',sizes:'180x180',href:appleHref});
   replaceLink('favIcon',{rel:'icon',type:'image/png',sizes:'192x192',href:favHref});
   const manifestLink=$('#manifestLink');
-  const manifest={name:'Minha Agenda',short_name:'Agenda',start_url:'./',display:'standalone',background_color:'#F6F5FA',theme_color:'#D6337A',lang:'pt-BR',
+  const manifest={name:'MyDay',short_name:'MyDay',start_url:'./',display:'standalone',background_color:'#F6F5FA',theme_color:'#D6337A',lang:'pt-BR',
     icons:[{src:favHref,sizes:'192x192',type:'image/png'},{src:base?base+'icon-512.png':'icon-512.png?v=fono2',sizes:'512x512',type:'image/png',purpose:'any'}]};
   const url=URL.createObjectURL(new Blob([JSON.stringify(manifest)],{type:'application/manifest+json'}));
   if(manifestLink)manifestLink.href=url;
@@ -498,10 +507,6 @@ async function apiFetch(path,opts){
   if(!res.ok){const err=new Error((body&&body.error)||('http_'+res.status));err.status=res.status;err.body=body;throw err}
   return body;
 }
-async function apiSignup(email,password,name,title){
-  const r=await apiFetch('/auth/signup',{method:'POST',body:JSON.stringify({email,password,name,title})});
-  setAuth({token:r.token,email});
-}
 // Monta o S a partir de uma resposta "full" (?full=1) — perfil + todos os
 // recursos numa chamada só, em vez de 7 separadas (ver api/auth/login.ts e
 // api/auth/me.ts): o custo de cada requisição extra é alto, principalmente
@@ -513,14 +518,7 @@ function stateFromBootstrap(data){
   const patients=patientsRaw.map(p=>Object.assign({},p,{records:byPatient[p.id]||[]}));
   setSyncIds({places:places.map(x=>x.id),insurers:insurers.map(x=>x.id),patients:patients.map(x=>x.id),appts:appts.map(x=>x.id),exceptions:exceptions.map(x=>x.id),records:records.map(x=>x.id)});
   const settings=(S&&S.settings)||{msg:DEFAULT_MSG};
-  return{v:2,profile:{name:me.name,title:me.title||'',regNumber:me.regNumber||'',signature:me.signature||'',emailVerified:!!me.emailVerified},places,patients,appts,insurers,exceptions,settings};
-}
-async function apiLogin(email,password){
-  // ?full=1: o login já devolve o perfil e todos os recursos junto com o
-  // token — evita uma segunda chamada (GET /auth/me?full=1) logo em seguida.
-  const r=await apiFetch('/auth/login?full=1',{method:'POST',body:JSON.stringify({email,password})});
-  setAuth({token:r.token,email});
-  return stateFromBootstrap(r);
+  return{v:2,profile:{name:me.name,title:me.title||'',regNumber:me.regNumber||'',signature:me.signature||'',emailVerified:!!me.emailVerified,role:me.role||'client',accessType:me.accessType,accessUntil:me.accessUntil},places,patients,appts,insurers,exceptions,settings};
 }
 
 const RESOURCE_PATHS={places:'/places',insurers:'/insurers',patients:'/patients',appts:'/appts',exceptions:'/exceptions',records:'/records'};
@@ -561,7 +559,10 @@ function scheduleSync(){
   syncTimer=setTimeout(pushAll,900);
 }
 
-const ui={tab:'agenda',sel:todayISO(),week:iso(startOfWeek(new Date())),q:'',rep:{mode:'mes',anchor:todayISO(),q:'',shown:{},placeTab:null},showList:false,setTab:'perfil'};
+const UI_STATE_KEY='myday_ui_state';
+function loadUiState(){try{return JSON.parse(sessionStorage.getItem(UI_STATE_KEY)||'{}')}catch(e){return{}}}
+function saveUiState(){try{sessionStorage.setItem(UI_STATE_KEY,JSON.stringify({tab:ui.tab,setTab:ui.setTab,admView:ui.admView}))}catch(e){}}
+const ui=Object.assign({tab:'agenda',sel:todayISO(),week:iso(startOfWeek(new Date())),q:'',rep:{mode:'mes',anchor:todayISO(),q:'',shown:{},placeTab:null},showList:false,setTab:'perfil'},loadUiState());
 
 const place=id=>S.places.find(p=>p.id===id);
 const patient=id=>S.patients.find(p=>p.id===id);
@@ -639,11 +640,12 @@ const sheet=$('#sheet'),scrim=$('#scrim');
 function openSheet(title,html,mount){
   sheet.classList.remove('tall');$('#sheetTitle').textContent=title;$('#sheetBody').innerHTML=html;
   sheet.hidden=false;scrim.hidden=false;
+  document.body.classList.add('sheet-locked');
   requestAnimationFrame(()=>{sheet.classList.add('show');scrim.classList.add('show')});
   $('#sheetBody').scrollTop=0;
   mount&&mount($('#sheetBody'));
 }
-function closeSheet(){sheet.classList.remove('show');scrim.classList.remove('show');setTimeout(()=>{sheet.hidden=true;scrim.hidden=true;$('#sheetBody').innerHTML=''},250)}
+function closeSheet(){sheet.classList.remove('show');scrim.classList.remove('show');document.body.classList.remove('sheet-locked');setTimeout(()=>{sheet.hidden=true;scrim.hidden=true;$('#sheetBody').innerHTML=''},250)}
 $('#sheetClose').onclick=closeSheet;scrim.onclick=closeSheet;
 // Enter num <input> dentro de um bloco marcado com data-enter="#idDoBotão" age
 // como "enviar" (não tem <form> aqui, então o navegador não faz isso sozinho).
@@ -761,113 +763,94 @@ function resetPasswordScreen(token){
   };
   draw();
 }
-const OB_STEPS=['Sobre você','Onde você atende','Criar acesso'];
+// Não há mais cadastro público: a conta de cada profissional é criada pela
+// conta admin (painel em Ajustes → Clientes), com senha padrão e prazo de
+// acesso definidos por ela. Aqui só sobra login + o botão de exemplos.
+const DEFAULT_CLIENT_PASSWORD='mudar@123';
+let devNoticeShown=false;
+function devNoticePopup(){
+  if(devNoticeShown)return;
+  devNoticeShown=true;
+  openSheet('Em desenvolvimento',`<div class="section" style="display:flex;flex-direction:column;gap:12px">
+    <p class="muted" style="margin:0">O MyDay ainda está em desenvolvimento. Algumas coisas podem mudar ou apresentar instabilidade — se encontrar algo estranho, me avise pelo campo de feedback em Ajustes.</p>
+    <button class="btn primary block" id="devNoticeOk">Entendi</button>
+  </div>`);
+  $('#devNoticeOk').onclick=closeSheet;
+}
 function onboarding(){
   $('#tabs').hidden=true;$('#fab').hidden=true;
-  let places=[{name:'Local 1',color:'p1'},{name:'Local 2',color:'p4'},{name:'Particular',color:'p5'}];
-  let openCol=-1,obName='',obEmail='',obPassword='',obIcon='fonoaudiologia',mode='signup',step=1;
+  let liEmail='',liPassword='';
   const draw=()=>{
-    const enterTarget=mode!=='signup'?'#liGo':step<3?'#obNext':'#obGo';
-    const stepHtml=step===1?`
-        <label class="field"><span>Seu nome</span><input class="input" id="obName" placeholder="Ex.: Ana Souza" autocomplete="name"></label>
-        <label class="field"><span>Profissão</span><select class="input" id="obTitle">${ICON_PROFESSIONS.map(p=>`<option value="${p.key}">${esc(p.title)}</option>`).join('')}</select></label>
-        <div class="field"><span>Ícone do app</span>
-          <span class="small muted" style="font-weight:400">Dá pra trocar depois em Ajustes, mas escolher certo aqui já evita ter que reinstalar o atalho da tela de início pra pegar o ícone novo.</span>
-          <div class="iconpick" id="obIconPick">${ICON_PROFESSIONS.map(p=>`<button type="button" data-v="${p.key}"><img src="${iconBase(p.key)?iconBase(p.key)+'icon-192.png':'icon-192.png?v=fono2'}" alt=""><span>${esc(p.name)}</span></button>`).join('')}</div>
-        </div>
-        <button class="btn primary block" id="obNext">Continuar</button>
-      `:step===2?`
-        <div class="field"><span>Onde você atende</span>
-          <div style="display:flex;flex-direction:column;gap:8px">${places.map((p,i)=>`<div class="obplace"><button type="button" class="obcol ${openCol===i?'on':''}" data-col="${i}" style="background:${cv(p.color)}" aria-label="Mudar a cor de ${esc(p.name||'local')}"></button><input class="input" data-pi="${i}" value="${esc(p.name)}" placeholder="Nome do local"><button class="iconbtn" data-rm="${i}" aria-label="Remover">✕</button></div>${openCol===i?`<div class="cpick obpick" id="obPick"></div>`:''}`).join('')}</div>
-          <button class="link" id="obAdd">+ Adicionar outro local</button>
-          <span class="small muted" style="font-weight:400">Toque na bolinha colorida para escolher a cor de cada local. Depois você ajusta horários na aba Horários e cadastra os convênios em Ajustes.</span>
-        </div>
-        <div class="btnrow"><button class="btn ghost" id="obBack">Voltar</button><button class="btn primary" id="obNext">Continuar</button></div>
-      `:`
-        <label class="field"><span>E-mail</span><input class="input" id="obEmail" type="email" placeholder="voce@email.com" autocomplete="email"></label>
-        ${pwField('obPassword','Senha',{placeholder:'Pelo menos 6 caracteres',autocomplete:'new-password'})}
-        <div class="btnrow"><button class="btn ghost" id="obBack">Voltar</button><button class="btn primary" id="obGo">Criar conta</button></div>
-      `;
-    app.innerHTML=`<div class="ob" data-enter="${enterTarget}">
+    app.innerHTML=`<div class="ob" data-enter="#liGo">
       <div class="hero"><div class="mark"><svg class="logo" viewBox="0 0 1024 1024" aria-hidden="true"><defs><linearGradient id="lgBg" x1="0" y1="0" x2="0.55" y2="1"><stop offset="0" stop-color="#FF8FB6"/><stop offset="1" stop-color="#D6337A"/></linearGradient></defs><rect width="1024" height="1024" rx="228" fill="url(#lgBg)"/><rect x="196" y="236" width="632" height="464" rx="150" fill="#fff"/><path d="M330 640 L300 812 L470 690 Z" fill="#fff"/><g fill="#D6337A"><rect x="256" y="423" width="44" height="90" rx="22"/><rect x="334" y="383" width="44" height="170" rx="22"/><rect x="412" y="338" width="44" height="260" rx="22"/><rect x="490" y="383" width="44" height="170" rx="22"/><rect x="568" y="318" width="44" height="300" rx="22"/><rect x="646" y="368" width="44" height="200" rx="22"/><rect x="724" y="413" width="44" height="110" rx="22"/></g><circle cx="760" cy="760" r="132" fill="#fff"/><circle cx="760" cy="760" r="110" fill="#FFECF4"/><path d="M702 762 L746 806 L822 720" fill="none" stroke="#D6337A" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <h1>Sua agenda de atendimentos, num lugar só</h1>
       <p class="muted" style="margin:0">Clínicas, convênios e particular juntos, horários livres à vista, confirmação pelo WhatsApp e relatório para conferir os repasses.</p></div>
-      <div class="seg solid" id="obMode"><button data-v="signup">Criar conta</button><button data-v="login">Entrar</button></div>
-      ${mode==='signup'?`<div class="obsteps"><i class="${step>=1?'on':''}"></i><i class="${step>=2?'on':''}"></i><i class="${step>=3?'on':''}"></i></div>
-      <div class="small muted" style="margin:-6px 0 4px;font-weight:600">Passo ${step} de 3 · ${OB_STEPS[step-1]}</div>
-      ${stepHtml}`:`
-        <label class="field"><span>E-mail</span><input class="input" id="liEmail" type="email" placeholder="voce@email.com" autocomplete="email"></label>
-        ${pwField('liPassword','Senha',{autocomplete:'current-password'})}
-        <button class="btn primary block" id="liGo">Entrar</button>
-        <button class="link" id="liForgot" type="button" style="align-self:center">Esqueci minha senha</button>
-      `}
+      <label class="field"><span>E-mail</span><input class="input" id="liEmail" type="email" placeholder="voce@email.com" autocomplete="email"></label>
+      ${pwField('liPassword','Senha',{autocomplete:'current-password'})}
+      <button class="btn primary block" id="liGo">Entrar</button>
+      <button class="link" id="liForgot" type="button" style="align-self:center">Esqueci minha senha</button>
       <button class="btn ghost block" id="obDemo">Ver com exemplos primeiro</button>
+      <a class="link" id="obContact" href="#" style="align-self:center;text-decoration:none">Ainda não tem conta? Entre em contato</a>
     </div>`;
-    segSelect($('#obMode'),mode);
-    $('#obMode').querySelectorAll('button').forEach(b=>b.onclick=()=>{mode=b.dataset.v;step=1;draw()});
-    if(mode==='signup'&&step===1){
-      $('#obName').value=obName;$('#obTitle').value=obIcon;
-      $('#obName').oninput=e=>obName=e.target.value;
-      // Profissão e ícone são a mesma escolha — selecionar um atualiza o outro,
-      // assim não dá pra ficar com perfil e ícone descombinando.
-      $('#obTitle').onchange=e=>{obIcon=e.target.value;$('#obIconPick').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.v===obIcon))};
-      $('#obIconPick').querySelectorAll('button').forEach(b=>{b.classList.toggle('on',b.dataset.v===obIcon);
-        b.onclick=()=>{obIcon=b.dataset.v;$('#obIconPick').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));$('#obTitle').value=obIcon}});
-      $('#obNext').onclick=()=>{
-        const name=$('#obName').value.trim();
-        if(!name){toast('Escreva seu nome');$('#obName').focus();return}
-        obName=name;step=2;draw();
-      };
-    }else if(mode==='signup'&&step===2){
-      app.querySelectorAll('[data-pi]').forEach(inp=>inp.oninput=()=>places[+inp.dataset.pi].name=inp.value);
-      app.querySelectorAll('[data-col]').forEach(b=>b.onclick=()=>{const i=+b.dataset.col;openCol=openCol===i?-1:i;draw()});
-      if(openCol>=0&&places[openCol]){const sw=app.querySelector(`[data-col="${openCol}"]`);
-        colorPicker($('#obPick'),places[openCol].color,c=>{places[openCol].color=c;sw.style.background=cv(c)},()=>{openCol=-1;draw()});}
-      app.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{places.splice(+b.dataset.rm,1);openCol=-1;draw()});
-      $('#obAdd').onclick=()=>{places.push({name:'',color:COLORS[places.length%6]});openCol=-1;draw();app.querySelector(`[data-pi="${places.length-1}"]`).focus()};
-      $('#obBack').onclick=()=>{step=1;draw()};
-      $('#obNext').onclick=()=>{
-        if(!places.some(p=>p.name.trim())){toast('Adicione pelo menos um local');return}
-        step=3;draw();
-      };
-    }else if(mode==='signup'){
-      $('#obEmail').value=obEmail;$('#obPassword').value=obPassword;
-      $('#obEmail').oninput=e=>obEmail=e.target.value;$('#obPassword').oninput=e=>obPassword=e.target.value;
-      wireEye('obPassword');
-      $('#obBack').onclick=()=>{step=2;draw()};
-      $('#obGo').onclick=async()=>{
-        const pl=places.filter(p=>p.name.trim()).map(p=>{const x=newPlace(p.name.trim(),p.color,/particular/i.test(p.name)?'particular':'clinica');for(let d=1;d<=5;d++)x.hours[d]=[{s:'08:00',e:'12:00'},{s:'14:00',e:'18:00'}];return x});
-        const email=$('#obEmail').value.trim(),password=$('#obPassword').value;
-        if(!email||!password){toast('Preencha e-mail e senha');return}
-        const btn=$('#obGo');btn.disabled=true;
-        const title=(ICON_PROFESSIONS.find(p=>p.key===obIcon)||{}).title||'';
-        try{await apiSignup(email,password,obName,title)}
-        catch(e){btn.disabled=false;toast(e.body&&e.body.error==='email_in_use'?'Esse e-mail já tem conta':(e.body&&e.body.error==='invalid_input'?'Confira o e-mail e a senha (mínimo 6 caracteres)':'Não consegui criar a conta. Tente de novo.'));return}
-        S={v:2,profile:{name:obName,title,regNumber:'',signature:'',emailVerified:false},places:pl,patients:[],appts:[],insurers:[],exceptions:[],settings:{msg:DEFAULT_MSG,icon:obIcon}};
-        save();applyIcon();go('horarios');toast('Conta criada! Agora ajuste seus dias e horários');
-      };
-    }else{
-      $('#liEmail').oninput=e=>obEmail=e.target.value;$('#liPassword').oninput=e=>obPassword=e.target.value;
-      $('#liEmail').value=obEmail;$('#liPassword').value=obPassword;
-      wireEye('liPassword');
-      $('#liGo').onclick=async()=>{
-        const email=$('#liEmail').value.trim(),password=$('#liPassword').value;
-        if(!email||!password){toast('Preencha e-mail e senha');return}
-        const btn=$('#liGo');btn.disabled=true;
-        try{S=await apiLogin(email,password);save();render();toast('Bem-vinda de volta!')}
-        catch(e){btn.disabled=false;toast('E-mail ou senha incorretos')}
-      };
-      $('#liForgot').onclick=async()=>{
-        const email=($('#liEmail').value||'').trim();
-        if(!email){toast('Digite seu e-mail no campo acima primeiro');$('#liEmail').focus();return}
-        const btn=$('#liForgot');btn.disabled=true;
-        try{await apiFetch('/auth/verify?action=forgot',{method:'POST',body:JSON.stringify({email})});
-          toast('Se esse e-mail tiver conta, mandamos um link pra trocar a senha')}
-        catch(e){toast('Não consegui enviar agora. Tente de novo em instantes')}
+    $('#liEmail').oninput=e=>liEmail=e.target.value;$('#liPassword').oninput=e=>liPassword=e.target.value;
+    $('#liEmail').value=liEmail;$('#liPassword').value=liPassword;
+    wireEye('liPassword');
+    $('#liGo').onclick=async()=>{
+      const email=$('#liEmail').value.trim(),password=$('#liPassword').value;
+      if(!email||!password){toast('Preencha e-mail e senha');return}
+      const btn=$('#liGo');btn.disabled=true;
+      try{
+        const r=await apiFetch('/auth/login?full=1',{method:'POST',body:JSON.stringify({email,password})});
+        setAuth({token:r.token,email});
+        if(r.me.mustChangePassword){forceNewPasswordScreen(r);return}
+        S=stateFromBootstrap(r);save();render();toast('Bem-vinda de volta!');
+      }catch(e){
         btn.disabled=false;
-      };
-    }
+        toast(e.body&&e.body.error==='access_expired'?'Sua assinatura expirou. Fale com o suporte para renovar.':'E-mail ou senha incorretos');
+      }
+    };
+    $('#liForgot').onclick=async()=>{
+      const email=($('#liEmail').value||'').trim();
+      if(!email){toast('Digite seu e-mail no campo acima primeiro');$('#liEmail').focus();return}
+      const btn=$('#liForgot');btn.disabled=true;
+      try{await apiFetch('/auth/verify?action=forgot',{method:'POST',body:JSON.stringify({email})});
+        toast('Se esse e-mail tiver conta, mandamos um link pra trocar a senha')}
+      catch(e){toast('Não consegui enviar agora. Tente de novo em instantes')}
+      btn.disabled=false;
+    };
     $('#obDemo').onclick=()=>{S=demo();save();go('agenda');toast('Exemplos carregados. Apague em Ajustes quando quiser.')};
+    $('#obContact').onclick=e=>{
+      e.preventDefault();
+      const subject='Quero usar o MyDay';
+      const body='Olá! Vi o MyDay e gostaria de criar uma conta.\n\nMeu nome: \nMinha profissão: ';
+      location.href='mailto:phmsfaria@gmail.com?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+    };
+  };
+  draw();
+  devNoticePopup();
+}
+function forceNewPasswordScreen(r){
+  $('#tabs').hidden=true;$('#fab').hidden=true;
+  let pw='',pw2='';
+  const draw=()=>{
+    app.innerHTML=`<div class="ob" data-enter="#npGo">
+      <div class="hero"><h1>Defina sua senha</h1><p class="muted" style="margin:0">Essa é sua primeira vez entrando — escolha uma senha nova (diferente da padrão) para continuar.</p></div>
+      ${pwField('npPw1','Nova senha',{placeholder:'Pelo menos 6 caracteres',autocomplete:'new-password'})}
+      ${pwField('npPw2','Confirmar nova senha',{autocomplete:'new-password'})}
+      <button class="btn primary block" id="npGo">Salvar e entrar</button>
+    </div>`;
+    $('#npPw1').value=pw;$('#npPw2').value=pw2;
+    $('#npPw1').oninput=e=>pw=e.target.value;$('#npPw2').oninput=e=>pw2=e.target.value;
+    wireEye('npPw1');wireEye('npPw2');
+    $('#npGo').onclick=async()=>{
+      if(pw.length<6){toast('A senha precisa ter pelo menos 6 caracteres');return}
+      if(pw!==pw2){toast('As senhas não são iguais');return}
+      const btn=$('#npGo');btn.disabled=true;
+      try{
+        await apiFetch('/auth/me?action=password',{method:'PUT',body:JSON.stringify({currentPassword:DEFAULT_CLIENT_PASSWORD,newPassword:pw})});
+        S=stateFromBootstrap(r);save();render();toast('Senha definida! Bem-vinda.');
+      }catch(e){btn.disabled=false;toast('Não consegui salvar a senha agora. Tente de novo.')}
+    };
   };
   draw();
 }
@@ -910,44 +893,117 @@ function render(){
   const demoBar=$('#demoBar');demoBar.hidden=!S.demo;document.body.classList.toggle('has-demobar',!!S.demo);
   demoBar.querySelector('#demoCreate').onclick=()=>{S=null;try{localStorage.removeItem(KEY)}catch(e){}render()};
   $('#tabs').hidden=false;
-  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on',b.dataset.tab===ui.tab));
-  $('#fab').hidden=!['agenda','pacientes','horarios'].includes(ui.tab);
+  const isAdmin=S.profile.role==='admin';
+  document.querySelectorAll('.tab').forEach(b=>{b.hidden=isAdmin&&b.dataset.tab!=='ajustes';b.classList.toggle('on',b.dataset.tab===ui.tab)});
+  if(isAdmin)ui.tab='ajustes';
+  $('#fab').hidden=isAdmin||!['agenda','pacientes','horarios'].includes(ui.tab);
   $('#fabTxt').textContent=ui.tab==='horarios'?'Folga ou extra':'Agendar';
   ({agenda:renderAgenda,pacientes:renderPatients,horarios:renderHours,relatorios:renderReports,ajustes:renderSettings})[ui.tab]();
+  saveUiState();
 }
 
 /* ---------- agenda ---------- */
-function renderAgenda(){
-  const ws=parse(ui.week);const days=[...Array(7)].map((_,i)=>iso(addDays(ws,i)));
-  const we=addDays(ws,6);
-  const monthTxt=ws.getMonth()===we.getMonth()?`${MES[ws.getMonth()]} ${ws.getFullYear()}`:`${MES[ws.getMonth()].slice(0,3)} – ${MES[we.getMonth()].slice(0,3)} ${we.getFullYear()}`;
-  const list=apptsOn(ui.sel);
-  const free=freeSlots(ui.sel);
+function weekDayButtons(ws){
+  return [...Array(7)].map((_,i)=>{const d=iso(addDays(ws,i));const dd=parse(d);const ap=S.appts.filter(a=>a.date===d&&a.status!=='cancelado');const pls=[...new Set(ap.map(a=>place(a.placeId)?.color).filter(Boolean))].slice(0,3);const h=nationalHoliday(d);
+    return `<button class="day ${d===ui.sel?'sel':''} ${d===todayISO()?'today':''}" data-d="${d}"><span class="dw">${WD[dd.getDay()]}</span><span class="dn ${h?'hol':''}" title="${h?esc(h):''}">${dd.getDate()}</span><span class="dots">${pls.map(c=>`<i style="background:${d===ui.sel?'var(--accent-ink)':`${cv(c)}`}"></i>`).join('')}</span></button>`}).join('');
+}
+// Arrasta uma faixa de 3 painéis (anterior/atual/seguinte) seguindo o
+// dedo/mouse em tempo real, tipo carrossel, em vez de só trocar no soltar
+// (tipo clique). Ao soltar além do limiar, anima o resto do caminho e só
+// chama onCommit(dir) — dir=1 pro painel seguinte, -1 pro anterior — quando
+// a transição termina, assim a tela sempre mostra o que a animação prometeu.
+function wireCarouselTrack(track,onCommit){
+  let startX=0,dx=0,w=0,moved=false;
+  track.style.transition='none';
+  track.style.transform=`translateX(${-track.parentElement.clientWidth}px)`;
+  const onMove=(e)=>{dx=e.clientX-startX;if(Math.abs(dx)>6)moved=true;track.style.transform=`translateX(${-w+dx}px)`};
+  const onUp=()=>{
+    document.removeEventListener('pointermove',onMove);
+    document.removeEventListener('pointerup',onUp);
+    document.removeEventListener('pointercancel',onUp);
+    track.style.transition='transform .22s ease';
+    void track.offsetWidth; // força o layout a fixar o estado atual antes de trocar a transição, senão o navegador pode pular direto pro valor final sem animar (e o 'transitionend' nunca dispara)
+    const threshold=Math.min(80,w*0.18);
+    if(Math.abs(dx)>=threshold){
+      const dir=dx<0?1:-1;
+      let done=false;
+      const commit=()=>{if(done)return;done=true;onCommit(dir)};
+      track.addEventListener('transitionend',commit,{once:true});
+      setTimeout(commit,300); // rede de segurança caso o transitionend não dispare por algum motivo
+      track.style.transform=`translateX(${-w*(1+dir)}px)`;
+    }else{
+      track.style.transform=`translateX(${-w}px)`;
+    }
+  };
+  track.addEventListener('pointerdown',e=>{
+    w=track.parentElement.clientWidth;startX=e.clientX;dx=0;moved=false;
+    track.style.transition='none';
+    document.addEventListener('pointermove',onMove);
+    document.addEventListener('pointerup',onUp);
+    document.addEventListener('pointercancel',onUp);
+  });
+  track.addEventListener('click',e=>{if(moved){e.stopPropagation();e.preventDefault();moved=false}},true);
+}
+function wireWeekTrack(track,ws){
+  wireCarouselTrack(track,dir=>{ui.week=iso(addDays(ws,dir*7));ui.sel=ui.week;render()});
+}
+function wireDayTrack(track,selIso){
+  wireCarouselTrack(track,dir=>{
+    const ns=iso(addDays(parse(selIso),dir));
+    ui.sel=ns;
+    const ws=parse(ui.week);
+    if(ns<ui.week||ns>=iso(addDays(ws,7)))ui.week=iso(startOfWeek(parse(ns)));
+    render();
+  });
+}
+// Conteúdo do dia (cabeçalho + feriado/bloqueios + lista) pra um data ISO
+// qualquer — usado tanto no dia selecionado quanto nos painéis vizinhos do
+// carrossel de arrastar (wireDayTrack).
+function dayContentHtml(d){
+  const list=apptsOn(d);
+  const free=freeSlots(d);
   const items=[...list.map(a=>({k:'a',t:a.time,a})),...free.map(f=>({k:'f',t:f.time,f}))].sort((x,y)=>x.t.localeCompare(y.t)||(x.k==='a'?-1:1));
   const act=list.filter(a=>a.status!=='cancelado');
+  const dd=parse(d);
+  const blocks=blocksOn(d);
+  const hol=nationalHoliday(d);
+  return `<div class="dayhead"><h2>${d===todayISO()?'Hoje':cap(WDL[dd.getDay()])}, ${dd.getDate()} de ${MES[dd.getMonth()]}</h2><span class="muted small num">${act.length} ${act.length===1?'atendimento':'atendimentos'} · ${free.length} livres</span></div>
+  ${hol?`<div class="banner">Feriado: ${esc(hol)}${S.settings.blockHolidays===false?' · horários livres continuam aparecendo (desligado em Ajustes)':' · sem horários livres hoje'}</div>`:''}
+  ${blocks.map(e=>`<div class="banner">${e.allDay?'Dia bloqueado':`Bloqueado ${e.s}–${e.e}`}${e.placeId?' em '+esc(place(e.placeId)?.name||''):''}${e.note?' · '+esc(e.note):''}</div>`).join('')}
+  <div class="list">${items.length?items.map(it=>it.k==='a'?apptCard(it.a):freeCard(it.f)).join(''):`<div class="empty"><b>Nenhum horário neste dia</b>Não há atendimento previsto para ${WDL[dd.getDay()]}. Toque em Agendar para marcar mesmo assim, ou ajuste na aba Horários.</div>`}</div>`;
+}
+function renderAgenda(){
+  const ws=parse(ui.week);
+  const we=addDays(ws,6);
+  const monthTxt=ws.getMonth()===we.getMonth()?`${MES[ws.getMonth()]} ${ws.getFullYear()}`:`${MES[ws.getMonth()].slice(0,3)} – ${MES[we.getMonth()].slice(0,3)} ${we.getFullYear()}`;
   const sel=parse(ui.sel);
-  const blocks=blocksOn(ui.sel);
-  const hol=nationalHoliday(ui.sel);
   app.innerHTML=`
   <div class="top"><div><h1>Olá, ${esc(S.profile.name.split(' ')[0])}</h1><div class="sub">${S.demo?'Você está vendo exemplos':(S.profile.title?esc(S.profile.title):'Sua agenda')}</div></div>
-    <button class="chipbtn" id="shareFree">Horários livres</button></div>
+    <div style="display:flex;gap:8px;align-items:center"><button class="iconbtn" id="globalSearch" aria-label="Buscar paciente"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></button><button class="chipbtn" id="shareFree">Horários livres</button></div></div>
   <div class="weeknav"><span class="m">${monthTxt}</span><div class="btns">
     <button class="iconbtn" id="wPrev" aria-label="Semana anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg></button>
     <button class="chipbtn" id="wToday">Hoje</button>
     <button class="iconbtn" id="wNext" aria-label="Próxima semana"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg></button></div></div>
-  <div class="week">${days.map(d=>{const dd=parse(d);const ap=S.appts.filter(a=>a.date===d&&a.status!=='cancelado');const pls=[...new Set(ap.map(a=>place(a.placeId)?.color).filter(Boolean))].slice(0,3);const h=nationalHoliday(d);
-    return `<button class="day ${d===ui.sel?'sel':''} ${d===todayISO()?'today':''}" data-d="${d}"><span class="dw">${WD[dd.getDay()]}</span><span class="dn ${h?'hol':''}" title="${h?esc(h):''}">${dd.getDate()}</span><span class="dots">${pls.map(c=>`<i style="background:${d===ui.sel?'var(--accent-ink)':`${cv(c)}`}"></i>`).join('')}</span></button>`}).join('')}</div>
-  <div class="dayhead"><h2>${ui.sel===todayISO()?'Hoje':cap(WDL[sel.getDay()])}, ${sel.getDate()} de ${MES[sel.getMonth()]}</h2><span class="muted small num">${act.length} ${act.length===1?'atendimento':'atendimentos'} · ${free.length} livres</span></div>
-  ${hol?`<div class="banner">Feriado: ${esc(hol)}${S.settings.blockHolidays===false?' · horários livres continuam aparecendo (desligado em Ajustes)':' · sem horários livres hoje'}</div>`:''}
-  ${blocks.map(e=>`<div class="banner">${e.allDay?'Dia bloqueado':`Bloqueado ${e.s}–${e.e}`}${e.placeId?' em '+esc(place(e.placeId)?.name||''):''}${e.note?' · '+esc(e.note):''}</div>`).join('')}
-  <div class="list">${items.length?items.map(it=>it.k==='a'?apptCard(it.a):freeCard(it.f)).join(''):`<div class="empty"><b>Nenhum horário neste dia</b>Não há atendimento previsto para ${WDL[sel.getDay()]}. Toque em Agendar para marcar mesmo assim, ou ajuste na aba Horários.</div>`}</div>`;
-  app.querySelectorAll('.day').forEach(b=>b.onclick=()=>{ui.sel=b.dataset.d;render()});
+  <div class="weekwrap"><div class="weektrack">
+    <div class="week" data-pane="prev">${weekDayButtons(addDays(ws,-7))}</div>
+    <div class="week" data-pane="cur">${weekDayButtons(ws)}</div>
+    <div class="week" data-pane="next">${weekDayButtons(addDays(ws,7))}</div>
+  </div></div>
+  <div class="daywrap"><div class="daytrack">
+    <div class="daypane" data-pane="prev">${dayContentHtml(iso(addDays(sel,-1)))}</div>
+    <div class="daypane" data-pane="cur">${dayContentHtml(ui.sel)}</div>
+    <div class="daypane" data-pane="next">${dayContentHtml(iso(addDays(sel,1)))}</div>
+  </div></div>`;
+  app.querySelectorAll('.week[data-pane="cur"] .day').forEach(b=>b.onclick=()=>{ui.sel=b.dataset.d;render()});
   $('#wPrev').onclick=()=>{ui.week=iso(addDays(ws,-7));ui.sel=ui.week;render()};
   $('#wNext').onclick=()=>{ui.week=iso(addDays(ws,7));ui.sel=ui.week;render()};
   $('#wToday').onclick=()=>{ui.week=iso(startOfWeek(new Date()));ui.sel=todayISO();render()};
+  wireWeekTrack(app.querySelector('.weektrack'),ws);
+  wireDayTrack(app.querySelector('.daytrack'),ui.sel);
   $('#shareFree').onclick=shareFree;
-  app.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>viewAppt(b.dataset.a));
-  app.querySelectorAll('[data-free]').forEach(b=>b.onclick=()=>{const[t,p]=b.dataset.free.split('|');editAppt(null,{date:ui.sel,time:t,placeId:p})});
+  $('#globalSearch').onclick=openGlobalPatientSearch;
+  app.querySelectorAll('.daypane[data-pane="cur"] [data-a]').forEach(b=>b.onclick=()=>viewAppt(b.dataset.a));
+  app.querySelectorAll('.daypane[data-pane="cur"] [data-free]').forEach(b=>b.onclick=()=>{const[t,p]=b.dataset.free.split('|');editAppt(null,{date:ui.sel,time:t,placeId:p})});
 }
 function apptCard(a){
   const p=patient(a.patientId),pl=place(a.placeId);
@@ -1150,15 +1206,48 @@ function editAppt(id,pre={}){
 }
 
 /* ---------- pacientes ---------- */
+// Pacientes com a última sessão concluída há mais de 30 dias e sem nada
+// agendado pra frente — lembrete de retorno, não entra no banco (calculado
+// na hora a partir do que já existe em S.appts).
+function patientsNeedingReturn(){
+  const cutoff=iso(addDays(new Date(),-30));
+  return S.patients.map(p=>{
+    const apptsP=S.appts.filter(a=>a.patientId===p.id);
+    const hasFuture=apptsP.some(a=>a.date>=todayISO()&&(a.status==='agendado'||a.status==='confirmado'));
+    if(hasFuture)return null;
+    const lastDone=apptsP.filter(a=>a.status==='concluido').sort((a,b)=>b.date.localeCompare(a.date))[0];
+    if(!lastDone||lastDone.date>=cutoff)return null;
+    return{p,lastDone};
+  }).filter(Boolean).sort((a,b)=>a.lastDone.date.localeCompare(b.lastDone.date));
+}
 function renderPatients(){
   const q=ui.q.trim().toLowerCase();
   const list=S.patients.filter(p=>!q||p.name.toLowerCase().includes(q)||(digits(q)&&digits(p.phone).includes(digits(q)))).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
   const next=pid=>S.appts.filter(a=>a.patientId===pid&&a.status!=='cancelado'&&a.date>=todayISO()).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time))[0];
+  const needReturn=q?[]:patientsNeedingReturn();
   app.innerHTML=`<div class="top"><div><h1>Pacientes</h1><div class="sub num">${S.patients.length} cadastrados</div></div></div>
   <input class="search" id="q" type="search" placeholder="Buscar por nome ou telefone" value="${esc(ui.q)}">
+  ${needReturn.length?`<div class="section"><div class="label">Sem retorno há mais de 30 dias</div>
+    <div class="rows">${needReturn.map(({p,lastDone})=>`<button class="row" data-p="${p.id}"><span class="avatar">${esc(initials(p.name))}</span><span class="grow"><b>${esc(p.name)}</b><span class="small muted">Última sessão: ${fmtDate(lastDone.date)}</span></span><span class="chev">›</span></button>`).join('')}</div>
+  </div>`:''}
   <div class="section">${list.length?`<div class="rows">${list.map(p=>{const n=next(p.id);const ins=p.pay==='convenio'?insurer(p.insurerId)?.name:'';return `<button class="row" data-p="${p.id}"><span class="avatar">${esc(initials(p.name))}</span><span class="grow"><b>${esc(p.name)}</b><span class="small muted">${n?`Próximo: ${dayLabel(n.date)} às ${n.time}`:(p.phone?esc(fmtPhone(p.phone)):'Sem telefone')}${ageOf(p.birth)!==null?' · '+ageOf(p.birth)+' anos':''}${ins?' · '+esc(ins):''}</span></span><span class="chev">›</span></button>`}).join('')}</div>`:`<div class="empty"><b>${q?'Ninguém encontrado':'Nenhum paciente ainda'}</b>${q?'Tente outro nome.':'Os pacientes aparecem aqui quando você agenda o primeiro atendimento.'}</div>`}</div>`;
   const qi=$('#q');qi.oninput=()=>{ui.q=qi.value;const pos=qi.selectionStart;renderPatients();const n=$('#q');n.focus();n.setSelectionRange(pos,pos)};
   app.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>viewPatient(b.dataset.p));
+}
+// Busca global de pacientes, acessível da Agenda sem precisar trocar de aba
+// primeiro — mesma lógica de busca da aba Pacientes, só que num popup.
+function openGlobalPatientSearch(){
+  openSheet('Buscar paciente','<input class="search" id="gpsInput" type="search" placeholder="Nome ou telefone"><div id="gpsResults" class="rows" style="margin-top:10px"></div>',b=>{
+    const inp=b.querySelector('#gpsInput'),resEl=b.querySelector('#gpsResults');
+    const run=()=>{
+      const q=inp.value.trim().toLowerCase();
+      const list=q?S.patients.filter(p=>p.name.toLowerCase().includes(q)||(digits(q)&&digits(p.phone).includes(digits(q)))).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).slice(0,20):[];
+      resEl.innerHTML=list.length?list.map(p=>`<button class="row" data-p="${p.id}"><span class="avatar">${esc(initials(p.name))}</span><span class="grow"><b>${esc(p.name)}</b>${p.phone?`<span class="small muted">${esc(fmtPhone(p.phone))}</span>`:''}</span><span class="chev">›</span></button>`).join(''):(q?'<div class="empty"><b>Ninguém encontrado</b></div>':'');
+      resEl.querySelectorAll('[data-p]').forEach(btn=>btn.onclick=()=>viewPatient(btn.dataset.p));
+    };
+    inp.oninput=run;
+    setTimeout(()=>inp.focus(),50);
+  });
 }
 const SEX={F:'Feminino',M:'Masculino',O:'Outro'};
 function ageOf(b){if(!b)return null;const d=parse(b),n=new Date();let a=n.getFullYear()-d.getFullYear();if(n.getMonth()<d.getMonth()||(n.getMonth()===d.getMonth()&&n.getDate()<d.getDate()))a--;return a>=0&&a<130?a:null}
@@ -1608,6 +1697,32 @@ function placeConferCard(x){
     }).join('')||'<div class="small muted">Nenhum atendimento concluído ainda neste período.</div>'}
   </div>`;
 }
+// Receita mês a mês (últimos 6 meses) pra um gráfico simples e comparação
+// com o mês anterior no topo dos Relatórios — independe do período
+// selecionado (dia/semana/mês), sempre olha o calendário real.
+function monthlyRevenueSeries(){
+  const now=new Date();
+  const months=[...Array(6)].map((_,i)=>new Date(now.getFullYear(),now.getMonth()-(5-i),1).toISOString().slice(0,7));
+  const sums=Object.fromEntries(months.map(m=>[m,0]));
+  S.appts.forEach(a=>{if(a.status==='concluido'&&a.date.slice(0,7) in sums)sums[a.date.slice(0,7)]+=(+a.price||0)});
+  return months.map(m=>({month:m,total:sums[m]}));
+}
+function monthlyRevenueCard(){
+  const series=monthlyRevenueSeries();
+  const max=Math.max(...series.map(s=>s.total),1);
+  const cur=series[5].total,prev=series[4].total;
+  const delta=prev?((cur-prev)/prev*100):(cur?100:0);
+  const deltaColor=delta>0?'var(--ok)':delta<0?'var(--bad)':'var(--muted)';
+  return `<div class="section"><div class="label">Receita mês a mês</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline"><b class="num" style="font-size:20px">${money(cur)}</b><span class="small num" style="color:${deltaColor};font-weight:700">${delta>0?'▲':delta<0?'▼':'—'} ${Math.abs(delta).toFixed(0)}% vs mês anterior</span></div>
+    <div style="display:flex;align-items:flex-end;gap:8px;height:90px">
+      ${series.map(s=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end">
+        <div style="width:100%;max-width:28px;border-radius:4px 4px 0 0;background:var(--accent);height:${s.total?Math.max(s.total/max*62,4):2}px"></div>
+        <div class="small muted" style="font-size:10px">${monthAbbr(s.month)}</div>
+      </div>`).join('')}
+    </div>
+  </div></div>`;
+}
 function renderReports(){
   const R=reportData();const maxPay=Math.max(1,...R.byPay.map(x=>x.total));
   const sortedList=[...R.inP].sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
@@ -1630,6 +1745,8 @@ function renderReports(){
     <div class="ptotal small"><span class="muted">Previsão dos ainda agendados</span><span class="num" style="font-weight:600">${money(R.forecast)}</span></div>
   </div>
   <div class="btnrow" style="margin-top:10px"><button class="btn soft" id="rCopy">Copiar relatório</button><button class="btn ghost" id="rCsv">Exportar planilha</button></div>
+
+  ${monthlyRevenueCard()}
 
   ${R.byPay.length?`<div class="section"><div class="label">Por convênio e particular</div><div class="card" style="display:flex;flex-direction:column;gap:14px">
     ${R.byPay.map(g=>`<div style="--pc:var(--accent)"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(g.name)}</b><span class="num small">${g.n} · ${money(g.total)}</span></div><div class="bar"><i style="width:${g.total/maxPay*100}%"></i></div>${g.pend?`<div class="small num" style="color:var(--warn);margin-top:4px">a receber ${money(g.pend)}</div>`:''}</div>`).join('')}
@@ -1692,20 +1809,70 @@ function reportCsv(R){
 }
 
 /* ---------- ajustes ---------- */
-const SETTINGS_TABS=[['perfil','Perfil'],['atendimento','Atendimento'],['aparencia','Aparência']];
+function settingsTabs(){
+  if(AUTH&&S.profile.role==='admin')return[['admin','Clientes']];
+  return[['perfil','Perfil'],['atendimento','Atendimento'],['aparencia','Aparência']];
+}
 function renderSettings(){
-  if(!SETTINGS_TABS.some(t=>t[0]===ui.setTab))ui.setTab='perfil';
-  app.innerHTML=`<div class="top"><div><h1>Ajustes</h1><div class="sub">Perfil, atendimento e preferências</div></div></div>
+  const tabs=settingsTabs();
+  const isAdminAcc=S.profile.role==='admin';
+  if(!tabs.some(t=>t[0]===ui.setTab))ui.setTab=tabs[0][0];
+  app.innerHTML=`<div class="top"><div><h1>Ajustes</h1><div class="sub">${tabs.length>1?'Perfil, atendimento e preferências':'Gestão de contas e acompanhamento do app'}</div></div>
+  ${isAdminAcc?`<button class="btn soft" id="admBell" style="position:relative;padding:8px 10px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M6 8a6 6 0 1 1 12 0c0 3.5 1 5.5 2 7H4c1-1.5 2-3.5 2-7Z"/><path d="M10 19a2 2 0 0 0 4 0"/></svg><span id="admBellBadge" class="pill" style="position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 4px;background:var(--bad);color:#fff;font-size:11px;line-height:18px;text-align:center;border-radius:9px" hidden>0</span></button>`:''}</div>
   ${S.demo?`<div class="info" style="margin-bottom:10px">Você está usando dados de exemplo. <button class="link" id="clearDemo" style="padding:0">Começar com minha agenda</button></div>`:''}
-  <div class="seg solid" id="setTabs" style="margin-bottom:16px">${SETTINGS_TABS.map(([k,l])=>`<button data-v="${k}">${l}</button>`).join('')}</div>
+  ${tabs.length>1?`<div class="seg solid" id="setTabs" style="margin-bottom:16px">${tabs.map(([k,l])=>`<button data-v="${k}">${l}</button>`).join('')}</div>`:''}
   <div id="setBody"></div>`;
-  segSelect($('#setTabs'),ui.setTab);
-  $('#setTabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{ui.setTab=b.dataset.v;render()});
+  if($('#setTabs')){segSelect($('#setTabs'),ui.setTab);$('#setTabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{ui.setTab=b.dataset.v;render()})}
   if($('#clearDemo'))$('#clearDemo').onclick=()=>{S=null;try{localStorage.removeItem(KEY)}catch(e){}render()};
+  if($('#admBell')){
+    $('#admBell').onclick=openAdminNotifPopup;
+    refreshAdminBell();
+  }
   const body=$('#setBody');
   if(ui.setTab==='perfil')renderSetPerfil(body);
   else if(ui.setTab==='atendimento')renderSetAtendimento(body);
+  else if(ui.setTab==='admin')renderSetAdmin(body);
   else renderSetAparencia(body);
+}
+const ADM_SEEN_KEY='myday_adm_notif_seen';
+const ADM_CLEARED_KEY='myday_adm_notif_cleared';
+function adminLastSeen(){let t=0;try{t=new Date(localStorage.getItem(ADM_SEEN_KEY)||0).getTime()}catch(e){}return t}
+function adminClearedBefore(){let t=0;try{t=new Date(localStorage.getItem(ADM_CLEARED_KEY)||0).getTime()}catch(e){}return t}
+function markAdminNotifsSeen(){try{localStorage.setItem(ADM_SEEN_KEY,new Date().toISOString())}catch(e){}const b=$('#admBellBadge');if(b)b.hidden=true}
+// "Limpar" só esconde da lista de notificações (guardando um corte de data
+// no aparelho) — os eventos continuam no histórico da aba Logs, só somem
+// do popup de notificação.
+function clearAdminNotifs(){const now=new Date().toISOString();try{localStorage.setItem(ADM_CLEARED_KEY,now);localStorage.setItem(ADM_SEEN_KEY,now)}catch(e){}const b=$('#admBellBadge');if(b)b.hidden=true}
+async function refreshAdminBell(){
+  const badge=$('#admBellBadge');if(!badge)return;
+  try{
+    const data=await apiFetch('/auth/me?action=admin-logs');
+    const lastSeen=adminLastSeen(),clearedBefore=adminClearedBefore();
+    const visible=(data.notifications||[]).filter(l=>new Date(l.createdAt).getTime()>clearedBefore);
+    const n=visible.filter(l=>new Date(l.createdAt).getTime()>lastSeen).length;
+    badge.hidden=!n;badge.textContent=n>99?'99+':String(n);
+  }catch(e){}
+}
+async function openAdminNotifPopup(){
+  openSheet('Notificações','<div class="small muted" style="padding:10px 0">Carregando…</div>');
+  sheet.classList.add('tall');
+  let data;
+  try{data=await apiFetch('/auth/me?action=admin-logs')}
+  catch(e){$('#sheetBody').innerHTML='<div class="small muted" style="padding:10px 0">Não consegui carregar agora.</div>';return}
+  const lastSeen=adminLastSeen(),clearedBefore=adminClearedBefore();
+  const visible=data.notifications.filter(l=>new Date(l.createdAt).getTime()>clearedBefore);
+  const pending=visible.filter(l=>new Date(l.createdAt).getTime()>lastSeen).length;
+  const NOTIF_LABEL={feedback:'Novo feedback',unhandled_error:'Erro na aplicação',cron_backup_failed:'Backup semanal falhou',cron_digest_failed:'Resumo push falhou',access_expired:'Acesso vencido',login_failed:'Tentativa de login falhou'};
+  $('#sheetBody').innerHTML=`
+    <div class="small muted" style="margin-bottom:10px">${pending?`${pending} notificaç${pending>1?'ões':'ão'} pendente${pending>1?'s':''}`:'Tudo em dia, nenhuma pendente'}</div>
+    ${visible.length?`<div class="rows" style="flex-shrink:0">${visible.map(l=>{const unread=new Date(l.createdAt).getTime()>lastSeen;
+      return `<div class="row" style="cursor:default;align-items:flex-start;opacity:${unread?'1':'.6'}"><span class="dot" style="background:${LOG_LEVEL_COLOR[l.level]||'var(--muted)'};width:8px;height:8px;border-radius:50%;margin-top:6px"></span><span class="grow"><b>${esc(NOTIF_LABEL[l.event]||LOG_EVENT_LABEL[l.event]||l.event)}</b>${l.email?` · ${esc(l.email)}`:''}${l.message?`<span class="small muted" style="display:block">${esc(l.message.slice(0,140))}</span>`:''}</span><span class="small muted" style="white-space:nowrap">${relTime(l.createdAt)}</span></div>`}).join('')}</div>`:'<div class="empty"><b>Nenhuma notificação ainda</b></div>'}
+    <div class="btnrow" style="margin-top:14px">
+      ${pending?'<button class="btn soft block" id="notifMarkAll">Marcar todas como lidas</button>':''}
+      ${visible.length?'<button class="btn ghost block" id="notifClearAll">Limpar notificações</button>':''}
+    </div>`;
+  if($('#notifMarkAll'))$('#notifMarkAll').onclick=()=>{markAdminNotifsSeen();closeSheet()};
+  if($('#notifClearAll'))$('#notifClearAll').onclick=()=>{clearAdminNotifs();closeSheet()};
 }
 
 function renderSetPerfil(body){
@@ -1721,6 +1888,11 @@ function renderSetPerfil(body){
     <div class="btnrow"><label class="btn soft" for="sigFile" style="cursor:pointer">Enviar imagem</label>${S.profile.signature?'<button class="btn ghost" id="sigRemove">Remover</button>':''}</div>
     <input type="file" id="sigFile" accept="image/*" hidden>
   </div></div>
+  <div class="section" style="margin-bottom:10px"><div class="label">Feedback e suporte</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <div class="small muted">Encontrou um problema ou tem uma ideia de melhoria? Me conte direto por e-mail.</div>
+    <textarea class="input" id="fbText" placeholder="Escreva aqui o que você quer me contar..." style="min-height:90px"></textarea>
+    <a class="btn soft block" id="fbSend" href="#" style="text-decoration:none">Enviar feedback por e-mail</a>
+  </div></div>
   ${AUTH?`<div class="section" style="margin-bottom:10px"><div class="card" style="display:flex;flex-direction:column;gap:10px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><b>E-mail de confirmação</b><span class="pill" id="evBadge" style="background:var(--line);color:var(--muted)">verificando…</span></div>
     <div class="small muted" id="evHint">Confira se o e-mail da sua conta já foi confirmado.</div>
@@ -1730,6 +1902,10 @@ function renderSetPerfil(body){
     <div class="small muted">Conectado como <b>${esc(AUTH.email)}</b>. Suas alterações sincronizam automaticamente entre aparelhos.</div>
     <button class="btn ghost block" id="syncNow">Sincronizar agora</button>
   </div></div>
+  ${S.profile.role!=='admin'?`<div class="section"><div class="label">Sua assinatura</div><div class="card" style="display:flex;flex-direction:column;gap:6px">
+    <div class="small muted">${S.profile.accessType==='unlimited'?'Acesso sem data de validade.':`Acesso ${S.profile.accessType==='annual'?'anual':'mensal'}, válido até <b>${S.profile.accessUntil?new Date(S.profile.accessUntil).toLocaleDateString('pt-BR'):'—'}</b>.`}</div>
+    <div class="small muted">Para renovar ou tirar dúvidas, use o campo de feedback acima.</div>
+  </div></div>`:''}
   <div class="section"><div class="label">Notificação diária</div><div class="card" style="display:flex;flex-direction:column;gap:10px">
     <div class="small muted">Um aviso de bom dia (por volta das 7h) com quantos atendimentos você tem hoje — só nos dias em que tiver algo marcado.</div>
     <label class="toggle"><span>Ativar notificação</span><input type="checkbox" id="pushToggle"></label>
@@ -1746,7 +1922,18 @@ function renderSetPerfil(body){
     ${pwField('delPw','Confirme sua senha',{autocomplete:'current-password'})}
     <button class="btn danger block" id="delAcct">Excluir minha conta</button>
   </div></div>`
-  :`<div class="section" style="margin-bottom:10px"><div class="empty"><b>Sem conta na nuvem</b>Você está usando o app sem sincronização. Crie uma conta para trocar de aparelho sem perder dados.</div></div>`}`;
+  :`<div class="section" style="margin-bottom:10px"><div class="empty"><b>Você está vendo exemplos</b>Sem conta na nuvem, nada é sincronizado nem salvo. Entre com a conta que te enviamos por e-mail para usar de verdade.</div></div>`}`;
+  const fbSend=$('#fbSend');
+  fbSend.onclick=e=>{
+    e.preventDefault();
+    const text=($('#fbText').value||'').trim();
+    if(!text){toast('Escreva seu feedback antes de enviar');return}
+    const who=[S.profile.name,S.profile.title].filter(Boolean).join(' · ');
+    const from=AUTH?AUTH.email:'';
+    const body=text+`\n\n— ${who||'sem nome'}${from?` (${from})`:''}`;
+    if(AUTH)apiFetch('/auth/me?action=feedback',{method:'PUT',body:JSON.stringify({message:body})}).catch(()=>{});
+    location.href='mailto:phmsfaria@gmail.com?subject='+encodeURIComponent('Feedback MyDay')+'&body='+encodeURIComponent(body);
+  };
   $('#sName').onchange=e=>{S.profile.name=e.target.value.trim()||S.profile.name;save();toast('Nome salvo');if(AUTH)apiFetch('/auth/me',{method:'PUT',body:JSON.stringify({name:S.profile.name})}).catch(()=>{})};
   $('#sTitle').onchange=e=>{S.profile.title=e.target.value.trim();save();toast('Profissão salva');if(AUTH)apiFetch('/auth/me',{method:'PUT',body:JSON.stringify({title:S.profile.title})}).catch(()=>{})};
   $('#sReg').onchange=e=>{S.profile.regNumber=e.target.value.trim();save();toast('Registro salvo');if(AUTH)apiFetch('/auth/me',{method:'PUT',body:JSON.stringify({regNumber:S.profile.regNumber})}).catch(()=>{})};
@@ -1851,6 +2038,276 @@ function renderSetAtendimento(body){
   $('#resetMsg').onclick=()=>{S.settings.msg=DEFAULT_MSG;save();render();toast('Texto padrão restaurado')};
 }
 
+/* ---------- painel admin (criação e gestão de contas de clientes) ---------- */
+const ACCESS_LABEL={monthly:'Mensal',annual:'Anual',unlimited:'Ilimitado'};
+function addDaysIso(days){const d=new Date();d.setDate(d.getDate()+days);return d.toISOString()}
+function renderSetAdmin(body){
+  if(!ui.admView)ui.admView='geral';
+  body.innerHTML=`<div class="section"><div class="seg solid" id="admSeg"><button data-v="geral">Geral</button><button data-v="clients">Clientes</button><button data-v="feedback">Feedback</button><button data-v="logs">Logs</button><button data-v="conta">Conta</button></div></div>
+    <div id="admBody"></div>`;
+  segSelect($('#admSeg'),ui.admView);
+  $('#admSeg').querySelectorAll('button').forEach(b=>b.onclick=()=>{ui.admView=b.dataset.v;saveUiState();renderSetAdmin(body)});
+  if(ui.admView==='logs')renderAdminLogs($('#admBody'));
+  else if(ui.admView==='clients')renderAdminClients($('#admBody'));
+  else if(ui.admView==='feedback')renderAdminFeedback($('#admBody'));
+  else if(ui.admView==='conta')renderAdminConta($('#admBody'));
+  else renderAdminGeral($('#admBody'));
+}
+function renderAdminConta(body){
+  body.innerHTML=`<div class="section"><div class="label">Sua conta</div><div class="card" style="display:flex;flex-direction:column;gap:6px">
+    <div class="small muted">Conectada como <b>${esc(AUTH.email)}</b></div>
+  </div></div>
+  <div class="section"><div class="label">Trocar senha</div><div class="card" data-enter="#admPwSave" style="display:flex;flex-direction:column;gap:12px">
+    ${pwField('admPwCurrent','Senha atual',{autocomplete:'current-password'})}
+    ${pwField('admPwNew','Nova senha',{placeholder:'Pelo menos 6 caracteres',autocomplete:'new-password'})}
+    <button class="btn primary block" id="admPwSave">Salvar nova senha</button>
+  </div></div>
+  <div class="section"><button class="btn danger block" id="admLogout">Sair da conta</button></div>`;
+  wireEye('admPwCurrent');wireEye('admPwNew');
+  $('#admPwSave').onclick=async()=>{
+    const cur=$('#admPwCurrent').value,nw=$('#admPwNew').value;
+    if(!cur||!nw){toast('Preencha os dois campos');return}
+    if(nw.trim().length<6){toast('A nova senha precisa ter 6 caracteres ou mais');return}
+    const btn=$('#admPwSave');btn.disabled=true;
+    try{await apiFetch('/auth/me?action=password',{method:'PUT',body:JSON.stringify({currentPassword:cur,newPassword:nw})});$('#admPwCurrent').value='';$('#admPwNew').value='';toast('Senha alterada')}
+    catch(e){toast(e.message==='wrong_password'?'Senha atual incorreta':'Não consegui trocar a senha agora')}
+    btn.disabled=false;
+  };
+  twoTap($('#admLogout'),'Sair da conta','Toque de novo para sair',()=>{
+    clearAuth();
+    try{localStorage.removeItem(KEY)}catch(e){}
+    location.reload();
+  });
+}
+let adminClientsCache=null;
+function renderAdminClients(body){
+  body.innerHTML=`<div class="section"><div class="label">Contas de clientes</div>
+    <div class="small muted">Você cria a conta com o e-mail da cliente; a senha inicial é sempre <b class="num">mudar@123</b> e ela troca no primeiro acesso.</div>
+    <input class="input" id="admSearch" placeholder="Buscar por nome ou e-mail…" style="margin-bottom:10px">
+    <div id="admList" class="rows"><div class="small muted" style="padding:10px 0">Carregando…</div></div>
+    <button class="btn soft block" id="admAdd">+ Nova conta de cliente</button></div>`;
+  $('#admAdd').onclick=()=>editClientAccess(null);
+  $('#admSearch').oninput=()=>renderAdminClientsList();
+  loadAdminList();
+}
+async function loadAdminList(){
+  const el=$('#admList');if(!el)return;
+  try{
+    adminClientsCache=await apiFetch('/auth/me?action=admin-list');
+    renderAdminClientsList();
+  }catch(e){el.innerHTML='<div class="small muted" style="padding:10px 0">Não consegui carregar a lista agora.</div>'}
+}
+function renderAdminClientsList(){
+  const el=$('#admList');if(!el||!adminClientsCache)return;
+  const q=($('#admSearch')?.value||'').trim().toLowerCase();
+  const list=q?adminClientsCache.filter(u=>(u.name||'').toLowerCase().includes(q)||(u.email||'').toLowerCase().includes(q)):adminClientsCache;
+  if(!adminClientsCache.length){el.innerHTML='<div class="empty"><b>Nenhuma cliente ainda</b>Toque em "Nova conta de cliente" para cadastrar a primeira.</div>';return}
+  if(!list.length){el.innerHTML='<div class="empty"><b>Nenhuma cliente encontrada</b>Tente outro nome ou e-mail.</div>';return}
+  el.innerHTML=list.map(u=>{
+    const expired=u.accessType!=='unlimited'&&u.accessUntil&&new Date(u.accessUntil)<new Date();
+    const statusTxt=u.accessType==='unlimited'?'Ilimitado':(expired?'Vencido':'Até '+new Date(u.accessUntil).toLocaleDateString('pt-BR'));
+    return `<button class="row" data-cl="${u.id}"><span class="avatar" style="width:34px;height:34px;font-size:13px">${esc(initials(u.name||u.email))}</span><span class="grow"><b>${esc(u.name||u.email)}</b><span class="small muted">${esc(u.email)} · ${ACCESS_LABEL[u.accessType]||u.accessType}${u.mustChangePassword?' · aguardando 1º acesso':''}</span></span><span class="pill" style="background:${expired?'var(--warn-soft)':'var(--ok-soft)'};color:${expired?'var(--warn)':'var(--ok)'}">${statusTxt}</span></button>`;
+  }).join('');
+  el.querySelectorAll('[data-cl]').forEach(b=>b.onclick=()=>editClientAccess(adminClientsCache.find(u=>u.id===b.dataset.cl)));
+}
+function editClientAccess(client){
+  const isNew=!client;
+  let email=client?.email||'',name=client?.name||'',title=client?.title||'',phone='';
+  let accessType=client?.accessType||'monthly',accessUntil=client?.accessUntil||addDaysIso(30);
+  const draw=()=>{
+    openSheet(isNew?'Nova conta de cliente':(client.name||client.email),`
+      <label class="field"><span>Nome da cliente</span><input class="input" id="clName" value="${esc(name)}" placeholder="Ex.: Ana Souza"></label>
+      ${isNew?`<label class="field"><span>Profissão (opcional)</span><input class="input" id="clTitle" value="${esc(title)}" placeholder="Ex.: Fonoaudióloga"></label>`:''}
+      <label class="field"><span>E-mail da cliente</span><input class="input" id="clEmail" type="email" value="${esc(email)}" placeholder="cliente@email.com"></label>
+      ${isNew?`<label class="field"><span>WhatsApp (opcional, só pra mandar o acesso)</span><input class="input" id="clPhone" type="tel" placeholder="(22) 99999-9999"></label>`:''}
+      <div class="field"><span>Tipo de acesso</span><div class="seg solid" id="clAccType"><button data-v="monthly">Mensal</button><button data-v="annual">Anual</button><button data-v="unlimited">Ilimitado</button></div></div>
+      ${accessType!=='unlimited'?`<label class="field"><span>Acesso válido até</span><input class="input" id="clUntil" type="date" value="${(accessUntil||'').slice(0,10)}"></label>`:''}
+      <button class="btn primary block" id="clSave">${isNew?'Criar conta':'Salvar alterações'}</button>
+      ${!isNew&&client.mustChangePassword?`<button class="btn soft block" id="clResend">Reenviar dados de acesso</button>`:''}
+      ${!isNew?`<button class="btn soft block" id="clReset">Resetar senha pra padrão</button>`:''}
+      ${!isNew?`<button class="btn danger block" id="clDel">Excluir conta</button>`:''}
+    `);
+    segSelect($('#clAccType'),accessType);
+    $('#clAccType').querySelectorAll('button').forEach(b=>b.onclick=()=>{accessType=b.dataset.v;if(accessType!=='unlimited'&&!accessUntil)accessUntil=addDaysIso(accessType==='annual'?365:30);draw()});
+    $('#clName').oninput=e=>name=e.target.value;$('#clEmail').oninput=e=>email=e.target.value;
+    if(isNew){$('#clTitle').oninput=e=>title=e.target.value;$('#clPhone').oninput=e=>phone=e.target.value}
+    if($('#clUntil'))$('#clUntil').onchange=e=>accessUntil=e.target.value?new Date(e.target.value+'T12:00:00').toISOString():accessUntil;
+    $('#clSave').onclick=async()=>{
+      if(!name.trim()||!email.trim()){toast('Preencha nome e e-mail');return}
+      const btn=$('#clSave');btn.disabled=true;
+      try{
+        if(isNew){
+          const created=await apiFetch('/auth/signup',{method:'POST',body:JSON.stringify({email:email.trim(),name:name.trim(),title:title.trim()||undefined,accessType,accessUntil:accessType==='unlimited'?undefined:accessUntil})});
+          toast('Conta criada');loadAdminList();
+          showClientCredentials(created,phone);
+        }else{
+          await apiFetch('/auth/me?action=admin-update',{method:'PUT',body:JSON.stringify({userId:client.id,name:name.trim(),email:email.trim(),accessType,accessUntil:accessType==='unlimited'?undefined:accessUntil})});
+          closeSheet();toast('Conta atualizada');loadAdminList();
+        }
+      }catch(e){
+        btn.disabled=false;
+        toast(e.body&&e.body.error==='email_in_use'?'Esse e-mail já tem conta':'Não consegui salvar agora');
+      }
+    };
+    if($('#clResend'))$('#clResend').onclick=()=>showClientCredentials(client);
+    if($('#clReset'))twoTap($('#clReset'),'Resetar senha pra padrão','Toque de novo pra confirmar',async()=>{
+      try{await apiFetch('/auth/me?action=admin-reset-password',{method:'PUT',body:JSON.stringify({userId:client.id})});toast('Senha resetada');loadAdminList();showClientCredentials(client)}
+      catch(e){toast('Não consegui resetar agora')}
+    });
+    if($('#clDel'))twoTap($('#clDel'),'Excluir conta','Toque de novo pra confirmar',async()=>{
+      try{await apiFetch('/auth/me?action=admin-delete&userId='+client.id,{method:'DELETE'});closeSheet();toast('Conta excluída');loadAdminList()}
+      catch(e){toast('Não consegui excluir agora')}
+    });
+  };
+  draw();
+}
+function showClientCredentials(client,phone){
+  const text=`Acesso ao MyDay\nE-mail: ${client.email}\nSenha: ${DEFAULT_CLIENT_PASSWORD}\nEntre em ${location.origin} e troque a senha no primeiro acesso.`;
+  openSheet('Enviar acesso para a cliente',`
+    <div class="small muted" style="margin-bottom:10px">Copie ou mande direto por WhatsApp/e-mail.</div>
+    <pre class="input" style="white-space:pre-wrap;user-select:all">${esc(text)}</pre>
+    <div class="btnrow" style="margin-top:10px">
+      <button class="btn soft" id="credCopy">Copiar</button>
+      ${phone?`<a class="btn wa" href="${waLink(phone,text)}" target="_blank" rel="noopener" style="text-decoration:none">WhatsApp</a>`:''}
+      <a class="btn soft" href="mailto:${encodeURIComponent(client.email)}?subject=${encodeURIComponent('Seu acesso ao MyDay')}&body=${encodeURIComponent(text)}" style="text-decoration:none">E-mail</a>
+    </div>
+  `);
+  $('#credCopy').onclick=()=>copy(text);
+}
+// "há Xmin/Xh/Xd" ou a data, pra atividade de conta e timestamp de log sem
+// pesar o olho com um ISO completo.
+function relTime(iso){
+  if(!iso)return'nunca';
+  const diffMs=Date.now()-new Date(iso).getTime();
+  const min=Math.floor(diffMs/60000);
+  if(min<1)return'agora mesmo';
+  if(min<60)return`há ${min} min`;
+  const h=Math.floor(min/60);
+  if(h<24)return`há ${h}h`;
+  const d=Math.floor(h/24);
+  if(d<30)return`há ${d}d`;
+  return new Date(iso).toLocaleDateString('pt-BR');
+}
+const LOG_LEVEL_COLOR={error:'var(--bad)',warn:'var(--warn)',info:'var(--muted)'};
+const LOG_EVENT_LABEL={login_success:'Login',login_failed:'Login falhou',access_expired:'Acesso vencido',account_created:'Conta criada',password_reset_by_admin:'Senha resetada (admin)',unhandled_error:'Erro',cron_backup_ok:'Backup semanal',cron_backup_failed:'Backup semanal falhou',cron_digest_ok:'Resumo push enviado',cron_digest_failed:'Resumo push falhou',feedback:'Feedback'};
+function metricsReportHtml(data){
+  const m=data.metrics;
+  const rows=[['Clientes',m.totalClients],['Online agora',m.onlineNow],['Ativas (7d)',m.active7d],['Aguardando ativação',m.awaitingActivation],['Pacientes cadastrados',m.totalPatients],['Atendimentos (total)',m.totalAppts],['Atendimentos no mês',m.apptsMonth],['Prontuários no mês',m.recordsMonth]];
+  return `<div style="font-family:sans-serif;max-width:560px;margin:0 auto">
+    <h2 style="color:#C2256A">MyDay — Métricas</h2>
+    <p style="color:#666;font-size:13px">Emitido em ${brDate(todayISO())}</p>
+    <table style="width:100%;border-collapse:collapse;margin-top:12px">${rows.map(([l,v])=>`<tr><td style="padding:6px 0;border-bottom:1px solid #eee">${esc(l)}</td><td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;font-weight:700">${v}</td></tr>`).join('')}</table>
+    <h3 style="margin-top:20px">Crescimento de contas (últimos 6 meses)</h3>
+    <table style="width:100%;border-collapse:collapse">${data.growth.map(g=>`<tr><td style="padding:4px 0;border-bottom:1px solid #eee">${g.month}</td><td style="padding:4px 0;border-bottom:1px solid #eee;text-align:right">${g.count}</td></tr>`).join('')}</table>
+  </div>`;
+}
+async function renderAdminGeral(body){
+  body.innerHTML='<div class="small muted" style="padding:10px 0">Carregando…</div>';
+  let data;
+  try{data=await apiFetch('/auth/me?action=admin-logs')}
+  catch(e){body.innerHTML='<div class="small muted" style="padding:10px 0">Não consegui carregar agora.</div>';return}
+  const m=data.metrics;
+  const cronRow=(label,c)=>{
+    const ok=c&&c.ok,ran=!!c;
+    return `<div class="row" style="cursor:default"><span class="dot" style="background:${!ran?'var(--muted)':ok?'var(--ok)':'var(--bad)'};width:8px;height:8px;border-radius:50%"></span><span class="grow"><b>${label}</b></span><span class="pill" style="background:${!ran?'var(--line)':ok?'var(--ok-soft)':'var(--warn-soft)'};color:${!ran?'var(--muted)':ok?'var(--ok)':'var(--warn)'}">${!ran?'nunca rodou':ok?'ok · '+relTime(c.at):'falhou · '+relTime(c.at)}</span></div>`;
+  };
+  const maxGrowth=Math.max(...data.growth.map(g=>g.count),1);
+  body.innerHTML=`
+    <div class="section"><div class="label" style="display:flex;justify-content:space-between;align-items:center">Métricas<button class="btn ghost" id="admExportMetrics" style="padding:4px 10px;font-size:13px">Exportar</button></div>
+      <div class="stats">
+        <div class="stat"><div class="label">Clientes</div><div class="v">${m.totalClients}</div></div>
+        <div class="stat"><div class="label">Online agora</div><div class="v">${m.onlineNow}</div></div>
+        <div class="stat"><div class="label">Ativas (7d)</div><div class="v">${m.active7d}</div></div>
+        <div class="stat"><div class="label">Aguardando ativação</div><div class="v">${m.awaitingActivation}</div></div>
+        <div class="stat"><div class="label">Pacientes cadastrados</div><div class="v">${m.totalPatients}</div></div>
+        <div class="stat"><div class="label">Atendimentos (total)</div><div class="v">${m.totalAppts}</div></div>
+        <div class="stat"><div class="label">Atendimentos no mês</div><div class="v">${m.apptsMonth}</div></div>
+        <div class="stat"><div class="label">Prontuários no mês</div><div class="v">${m.recordsMonth}</div></div>
+      </div></div>
+    <div class="section"><div class="label">Crescimento de contas (6 meses)</div>
+      <div class="card" style="display:flex;align-items:flex-end;gap:8px;height:110px;padding:12px">
+        ${data.growth.map(g=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end">
+          <div class="small muted">${g.count||''}</div>
+          <div style="width:100%;max-width:28px;border-radius:4px 4px 0 0;background:var(--accent);height:${g.count?Math.max(g.count/maxGrowth*70,4):2}px"></div>
+          <div class="small muted" style="font-size:10px">${monthAbbr(g.month)}</div>
+        </div>`).join('')}
+      </div>
+    </div>
+    <div class="section"><div class="label">Contas vencendo em breve (7 dias)</div>
+      ${data.expiringSoon.length?`<div class="rows">${data.expiringSoon.map(c=>{const days=Math.ceil((new Date(c.accessUntil).getTime()-Date.now())/86400000);
+        return `<div class="row" style="cursor:default"><span class="avatar" style="width:34px;height:34px;font-size:13px">${esc(initials(c.name||c.email))}</span><span class="grow"><b>${esc(c.name||c.email)}</b><span class="small muted">${esc(c.email)}</span></span><span class="pill" style="background:var(--warn-soft);color:var(--warn)">${days<=0?'vence hoje':`em ${days}d`}</span></div>`}).join('')}</div>`:'<div class="empty"><b>Nenhuma conta vencendo nos próximos 7 dias</b></div>'}
+    </div>
+    <div class="section"><div class="label" style="display:flex;justify-content:space-between;align-items:center">Rotinas automáticas<button class="btn ghost" id="admRunBackup" style="padding:4px 10px;font-size:13px">Rodar backup agora</button></div>
+      <div class="rows">${cronRow('Backup semanal (sexta 22h)',data.cron.backup)}${cronRow('Resumo diário por push',data.cron.digest)}</div>
+    </div>
+    <div class="section"><div class="label">Backups disponíveis</div>
+      <div id="admBackupList" class="rows"><div class="small muted" style="padding:10px 0">Carregando…</div></div>
+    </div>
+    <div class="section"><div class="label">Atividade por conta</div>
+      ${data.clients.length?`<div class="rows">${data.clients.map(c=>{const online=c.lastSeenAt&&(Date.now()-new Date(c.lastSeenAt).getTime())<5*60000;
+        return `<div class="row" style="cursor:default"><span class="avatar" style="width:34px;height:34px;font-size:13px">${esc(initials(c.name||c.email))}</span><span class="grow"><b>${esc(c.name||c.email)}</b><span class="small muted">${esc(c.email)}</span></span><span class="pill" style="background:${online?'var(--ok-soft)':'var(--line)'};color:${online?'var(--ok)':'var(--muted)'}">${online?'online agora':relTime(c.lastSeenAt)}</span></div>`}).join('')}</div>`:'<div class="empty"><b>Nenhuma atividade ainda</b></div>'}
+    </div>`;
+  $('#admExportMetrics').onclick=()=>printDoc('Métricas MyDay',metricsReportHtml(data));
+  $('#admRunBackup').onclick=async()=>{
+    const btn=$('#admRunBackup');btn.disabled=true;btn.textContent='Rodando…';
+    try{await apiFetch('/cron/backup',{method:'POST'});toast('Backup concluído');renderAdminGeral(body)}
+    catch(e){toast('Não consegui rodar o backup agora');btn.disabled=false;btn.textContent='Rodar backup agora'}
+  };
+  loadAdminBackupList();
+}
+async function loadAdminBackupList(){
+  const el=$('#admBackupList');if(!el)return;
+  try{
+    const list=await apiFetch('/cron/backup?action=list');
+    if(!list.length){el.innerHTML='<div class="empty"><b>Nenhum backup ainda</b></div>';return}
+    el.innerHTML=list.map(b=>`<div class="row" style="cursor:default"><span class="grow"><b>${new Date(b.createdAt).toLocaleString('pt-BR')}</b><span class="small muted">${(b.sizeBytes/1024).toFixed(0)} KB</span></span><button class="btn ghost" data-dl="${b.id}" style="padding:4px 10px;font-size:13px">Baixar</button></div>`).join('');
+    el.querySelectorAll('[data-dl]').forEach(btn=>btn.onclick=async()=>{
+      btn.disabled=true;
+      try{
+        const data=await apiFetch('/cron/backup?action=download&id='+btn.dataset.dl);
+        saveFile(`myday-backup-${btn.closest('.row').querySelector('b').textContent.replace(/[^\d]/g,'-')}.json`,JSON.stringify(data,null,2),'application/json');
+      }catch(e){toast('Não consegui baixar agora')}
+      btn.disabled=false;
+    });
+  }catch(e){el.innerHTML='<div class="small muted" style="padding:10px 0">Não consegui carregar a lista agora.</div>'}
+}
+async function renderAdminFeedback(body){
+  body.innerHTML='<div class="small muted" style="padding:10px 0">Carregando…</div>';
+  let data;
+  try{data=await apiFetch('/auth/me?action=admin-logs')}
+  catch(e){body.innerHTML='<div class="small muted" style="padding:10px 0">Não consegui carregar agora.</div>';return}
+  const feedbacks=data.feedbacks;
+  body.innerHTML=`
+    <div class="section" style="margin-bottom:10px"><div class="label">Feedback recebido</div>
+      ${feedbacks.length?`<div class="rows">${feedbacks.map(l=>`<div class="card" style="margin-bottom:8px;display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;justify-content:space-between;gap:10px"><b>${esc(l.email||'sem e-mail')}</b><span class="small muted" style="white-space:nowrap">${relTime(l.createdAt)}</span></div>
+        <div class="small" style="white-space:pre-wrap">${esc(l.message||'')}</div>
+        ${l.email?`<a class="link" href="mailto:${esc(l.email)}?subject=${encodeURIComponent('Re: feedback MyDay')}" style="padding:0">Responder por e-mail</a>`:''}
+      </div>`).join('')}</div>`:'<div class="empty"><b>Nenhum feedback recebido ainda</b></div>'}
+    </div>`;
+}
+const ADM_LOGS_PAGE_SIZE=20;
+async function renderAdminLogs(body,page){
+  page=page||0;
+  body.innerHTML='<div class="small muted" style="padding:10px 0">Carregando…</div>';
+  let data;
+  try{data=await apiFetch(`/auth/me?action=admin-logs&logsOffset=${page*ADM_LOGS_PAGE_SIZE}&logsLimit=${ADM_LOGS_PAGE_SIZE}`)}
+  catch(e){body.innerHTML='<div class="small muted" style="padding:10px 0">Não consegui carregar os logs agora.</div>';return}
+  const total=data.logsTotal||0;
+  const pages=Math.max(Math.ceil(total/ADM_LOGS_PAGE_SIZE),1);
+  body.innerHTML=`
+    <div class="section" style="margin-bottom:10px"><div class="label">Log de eventos${total?` (${total} no total)`:''}</div>
+      ${data.logs.length?`<div class="rows">${data.logs.map(l=>`<div class="row" style="cursor:default;align-items:flex-start"><span class="dot" style="background:${LOG_LEVEL_COLOR[l.level]||'var(--muted)'};width:8px;height:8px;border-radius:50%;margin-top:6px"></span><span class="grow"><b>${esc(LOG_EVENT_LABEL[l.event]||l.event)}</b>${l.email?` · ${esc(l.email)}`:''}${l.message?`<span class="small muted" style="display:block">${esc(l.message)}</span>`:''}</span><span class="small muted" style="white-space:nowrap">${relTime(l.createdAt)}</span></div>`).join('')}</div>`:'<div class="empty"><b>Nenhum evento registrado ainda</b></div>'}
+      ${pages>1?`<div class="btnrow" style="margin-top:10px;align-items:center">
+        <button class="btn ghost" id="admLogsPrev" ${page<=0?'disabled':''}>‹ Anterior</button>
+        <div class="small muted" style="flex:1;text-align:center">Página ${page+1} de ${pages}</div>
+        <button class="btn ghost" id="admLogsNext" ${page>=pages-1?'disabled':''}>Próxima ›</button>
+      </div>`:''}
+    </div>`;
+  if($('#admLogsPrev'))$('#admLogsPrev').onclick=()=>renderAdminLogs(body,page-1);
+  if($('#admLogsNext'))$('#admLogsNext').onclick=()=>renderAdminLogs(body,page+1);
+}
+
 function renderSetAparencia(body){
   const cur=S.settings.accent||'rosa';
   const curIcon=S.settings.icon||'fonoaudiologia';
@@ -1861,8 +2318,32 @@ function renderSetAparencia(body){
   <div class="section" style="margin-bottom:10px"><div class="label">Ícone do app</div>
     <div class="small muted">Escolha o ícone de acordo com a profissão. Vale pra aba do navegador na hora.</div>
     <div class="card"><div class="iconpick" id="iconPick">${ICON_PROFESSIONS.map(p=>`<button data-v="${p.key}"><img src="${iconBase(p.key)?iconBase(p.key)+'icon-192.png':'icon-192.png?v=fono2'}" alt=""><span>${esc(p.name)}</span></button>`).join('')}</div></div>
-    <div class="info small">Se o app já estiver instalado (atalho na tela de início do celular ou na área de trabalho do computador), esse atalho <b>não muda sozinho</b> — é uma trava do próprio sistema (iOS/Android/Windows), o ícone fica "congelado" no que estava quando você instalou. Pra pegar o ícone novo aí: remova o atalho e instale de novo (no celular: Compartilhar → Adicionar à Tela de Início; no computador: no menu do navegador, Instalar app).</div>
-  </div>`;
+    <div class="info small">Se o app já estiver instalado, trocar o ícone aqui <b>não atualiza o atalho</b> — é uma trava do próprio sistema. Pra pegar o ícone novo: remova o atalho e instale de novo (veja o passo a passo abaixo).</div>
+  </div>
+  <div class="section" style="margin-bottom:10px"><div class="label">Instalar o atalho na tela de início</div><div class="card" style="display:flex;flex-direction:column;gap:14px">
+    <div class="small muted" style="margin:0">Instalado, o MyDay abre direto como um app, sem precisar digitar o endereço no navegador toda vez.</div>
+    <div><b class="small">No iPhone (Safari)</b>
+      <ol class="small muted" style="margin:6px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px">
+        <li>Abra o MyDay pelo Safari (não funciona em outro navegador no iPhone)</li>
+        <li>Toque no ícone de compartilhar <span style="display:inline-block">⬆️</span> na barra de baixo</li>
+        <li>Toque em "Adicionar à Tela de Início" e depois em "Adicionar"</li>
+      </ol>
+    </div>
+    <div><b class="small">No Android (Chrome)</b>
+      <ol class="small muted" style="margin:6px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px">
+        <li>Abra o MyDay pelo Chrome</li>
+        <li>Toque nos três pontinhos (⋮) no canto superior direito</li>
+        <li>Toque em "Adicionar à tela inicial" ou "Instalar app"</li>
+      </ol>
+    </div>
+    <div><b class="small">No computador (Chrome/Edge)</b>
+      <ol class="small muted" style="margin:6px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px">
+        <li>Abra o MyDay pelo navegador</li>
+        <li>Clique no ícone de instalar (⊕ ou uma tela com seta) do lado direito da barra de endereço</li>
+        <li>Se não aparecer, abra o menu (⋮) e procure "Instalar MyDay..."</li>
+      </ol>
+    </div>
+  </div></div>`;
   segSelect($('#accentPick'),cur);
   $('#accentPick').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.settings.accent=b.dataset.v;save();applyAccent();render();toast('Cor atualizada')});
   $('#iconPick').querySelectorAll('button').forEach(b=>{b.classList.toggle('on',b.dataset.v===curIcon);

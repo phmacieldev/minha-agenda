@@ -6,3 +6,7 @@ Thumbs.db
 test-results/
 playwright-report/
 .env*
+# Arquivos de backup baixados manualmente pelo painel admin (contêm dados
+# reais, inclusive hash de senha) — nunca devem ir pro repositório.
+backup/
+myday-backup-*.json

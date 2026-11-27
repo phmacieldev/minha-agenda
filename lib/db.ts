@@ -23,9 +23,17 @@ export function getPool(): Pool {
   if (!pool) {
     const connectionString = process.env.DATABASE_URL;
     if (!connectionString) throw new Error('DATABASE_URL não configurada');
+    // `rejectUnauthorized: true` valida o certificado do servidor contra as
+    // CAs públicas confiáveis do Node — a Supabase usa certificado assinado
+    // por CA pública, então isso funciona sem configuração extra na maioria
+    // dos projetos. `DATABASE_CA_CERT` (opcional) permite fixar o CA exato
+    // da Supabase (Project Settings → Database → SSL Configuration) se um dia
+    // for preciso um nível de verificação mais estrito (verify-full).
     pool = new Pool({
       connectionString,
-      ssl: needsSsl(connectionString) ? { rejectUnauthorized: false } : false,
+      ssl: needsSsl(connectionString)
+        ? { rejectUnauthorized: true, ca: process.env.DATABASE_CA_CERT || undefined }
+        : false,
       max: 3,
     });
   }

@@ -5,7 +5,7 @@ self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;e.respondWi
 
 // Notificação push (resumo diário) — payload é um JSON {title,body,url}.
 self.addEventListener('push',e=>{
-  let data={title:'Minha Agenda',body:''};
+  let data={title:'MyDay',body:''};
   try{if(e.data)data=Object.assign(data,e.data.json())}catch(err){}
   e.waitUntil(self.registration.showNotification(data.title,{body:data.body,icon:'icon-192.png',badge:'icon-192.png',data:{url:data.url||'./'}}));
 });
