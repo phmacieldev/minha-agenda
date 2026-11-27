@@ -34,11 +34,18 @@ export async function sendEmail({ to, subject, html }: SendEmailInput): Promise<
   }
 }
 
+// O nome vem do perfil da usuária (editável livremente) — escapa antes de
+// colocar no HTML do e-mail pra um nome tipo `<img src=x onerror=...>` não
+// virar marcação ativa no cliente de e-mail de quem recebe.
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+}
+
 export function verificationEmailHtml(name: string, verifyUrl: string): string {
   return `
     <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
       <h2 style="color:#C2256A">MyDay</h2>
-      <p>Olá, ${name}!</p>
+      <p>Olá, ${escapeHtml(name)}!</p>
       <p>Confirme seu e-mail para ativar sua conta:</p>
       <p><a href="${verifyUrl}" style="display:inline-block;background:#C2256A;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">Confirmar e-mail</a></p>
       <p style="color:#666;font-size:13px">Se você não criou essa conta, pode ignorar este e-mail.</p>
@@ -50,7 +57,7 @@ export function resetPasswordEmailHtml(name: string, resetUrl: string): string {
   return `
     <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
       <h2 style="color:#C2256A">MyDay</h2>
-      <p>Olá, ${name}!</p>
+      <p>Olá, ${escapeHtml(name)}!</p>
       <p>Alguém (provavelmente você) pediu pra trocar a senha dessa conta. Toque no botão abaixo pra escolher uma nova senha:</p>
       <p><a href="${resetUrl}" style="display:inline-block;background:#C2256A;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:600">Trocar senha</a></p>
       <p style="color:#666;font-size:13px">Esse link vale por 2 horas. Se não foi você, pode ignorar este e-mail — sua senha continua a mesma.</p>

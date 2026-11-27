@@ -5,6 +5,9 @@
   "description": "PWA de agenda de atendimentos + API TypeScript (Vercel functions) com Postgres no Supabase",
   "scripts": {
     "test": "playwright test",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:all": "tsc --noEmit && vitest run tests/unit && vitest run tests/integration && playwright test",
     "dev:api": "node scripts/dev.js",
     "typecheck": "tsc --noEmit",
     "db:up": "docker compose up -d",
@@ -18,7 +21,7 @@
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.13.1",
     "web-push": "^3.6.7",
-    "zod": "^3.24.1"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
@@ -28,8 +31,11 @@
     "@types/pg": "^8.11.10",
     "@types/web-push": "^3.6.4",
     "@vercel/node": "^3.2.24",
+    "@vitest/coverage-v8": "^5.1.2",
     "serve": "^14.2.5",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "vercel": "^64.7.0"
+    "vercel": "^64.7.0",
+    "vitest": "^5.1.2"
   }
 }

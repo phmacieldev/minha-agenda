@@ -17,7 +17,7 @@ if (!run('docker', ['compose', 'up', '-d', '--wait'])) {
 }
 console.log('Banco local pronto.\n');
 
-const child = spawn('npx', ['vercel', 'dev'], { stdio: 'inherit', shell: true });
+const child = spawn('npx', ['tsx', 'watch', 'scripts/local-server.ts'], { stdio: 'inherit', shell: true });
 
 let stopping = false;
 function shutdown(code) {

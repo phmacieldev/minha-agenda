@@ -1,13 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import { getAuth, UnauthorizedError } from '../../lib/auth';
+import { getAuth, UnauthorizedError, DEFAULT_PASSWORD } from '../../lib/auth';
 import { getPool } from '../../lib/db';
 import { adminUserToJson } from '../../lib/mappers';
-
-// Senha padrão de toda conta nova — a cliente troca no primeiro acesso
-// (ver must_change_password e PUT /api/auth/me?action=password).
-const DEFAULT_PASSWORD = 'mudar@123';
+import { logEvent } from '../../lib/adminLog';
+import { withErrorLog } from '../../lib/withErrorLog';
 
 const schema = z.object({
   email: z.string().email(),
@@ -20,7 +18,7 @@ const schema = z.object({
 // Não há mais cadastro público: só a conta admin cria contas de clientes
 // (ver PLANO de acesso pago). Reaproveita este arquivo em vez de criar uma
 // function nova — o plano Hobby da Vercel já está no limite de 12.
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
 
   try {
@@ -52,9 +50,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       [normalizedEmail, passwordHash, name, title ?? null, accessType, accessType === 'unlimited' ? null : accessUntil]
     );
 
-    res.status(201).json(adminUserToJson(result.rows[0]));
+    const created = result.rows[0];
+    logEvent(pool, { event: 'account_created', userId: created.id, email: created.email, message: `criada pela admin (${accessType})` });
+    res.status(201).json(adminUserToJson(created));
   } catch (err) {
     if (err instanceof UnauthorizedError) return res.status(401).json({ error: 'unauthorized' });
     throw err;
   }
 }
+
+export default withErrorLog(handler);

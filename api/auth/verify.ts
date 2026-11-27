@@ -6,6 +6,7 @@ import { getAuth, UnauthorizedError } from '../../lib/auth';
 import { generateToken, hoursFromNow } from '../../lib/tokens';
 import { sendEmail, verificationEmailHtml, resetPasswordEmailHtml } from '../../lib/email';
 import { checkRateLimit, clientIp } from '../../lib/rateLimit';
+import { withErrorLog } from '../../lib/withErrorLog';
 
 const forgotSchema = z.object({ email: z.string().email() });
 const resetSchema = z.object({
@@ -22,7 +23,7 @@ function resultPage(title: string, message: string): string {
     <body><h1>${title}</h1><p>${message}</p></body></html>`;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req: VercelRequest, res: VercelResponse) {
   const pool = getPool();
 
   // Confirma o e-mail a partir do link enviado (clicado no navegador).
@@ -130,3 +131,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Allow', 'GET, POST');
   res.status(405).json({ error: 'method_not_allowed' });
 }
+
+export default withErrorLog(handler);

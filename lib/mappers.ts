@@ -112,5 +112,6 @@ export function adminUserToJson(row: any) {
     accessUntil: row.access_until,
     mustChangePassword: Boolean(row.must_change_password),
     createdAt: row.created_at,
+    lastSeenAt: row.last_seen_at,
   };
 }
